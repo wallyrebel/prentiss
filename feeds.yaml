@@ -101,3 +101,12 @@ feeds:
       - "Mississippi"
       - "Prentiss County"
     max_per_run: 3
+
+  # --- FetchRSS Feed 12 ---
+  - name: "Local Feed 12"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vccum0Dj2Ne.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
