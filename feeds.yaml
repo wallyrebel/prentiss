@@ -1,0 +1,103 @@
+# =============================================================================
+# RSS Feeds Configuration for Prentiss County News
+# =============================================================================
+
+feeds:
+  # --- FetchRSS Feed 1 ---
+  - name: "Local Feed 1"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vfoORA4wG0o.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 2 ---
+  - name: "Local Feed 2"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vfgOm7bS9wZ.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 3 ---
+  - name: "Local Feed 3"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vdUuY5240MW.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 4 ---
+  - name: "Local Feed 4"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQkh8y8Dwo.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 5 ---
+  - name: "Local Feed 5"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vcd7T1vE718.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 6 ---
+  - name: "Local Feed 6"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vcd689iq9Ap.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 7 ---
+  - name: "Local Feed 7"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQmMDQnBLX.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 8 ---
+  - name: "Local Feed 8"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQn25aq35m.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 9 ---
+  - name: "Local Feed 9"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQo05nA1Lx.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 10 ---
+  - name: "Local Feed 10"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQoj9p490W.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
+
+  # --- FetchRSS Feed 11 ---
+  - name: "Local Feed 11"
+    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQpa7W4E67.rss"
+    default_category: "Local News"
+    default_tags:
+      - "Mississippi"
+      - "Prentiss County"
+    max_per_run: 3
