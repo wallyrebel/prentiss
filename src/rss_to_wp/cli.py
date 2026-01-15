@@ -206,7 +206,7 @@ def run(
                 processed_articles=published_articles,
                 skipped_count=total_skipped,
                 error_count=total_errors,
-                site_name="Alcorn County News",
+                site_name="Prentiss County News",
             )
             send_email_notification(
                 smtp_email=settings.smtp_email,
