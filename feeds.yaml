@@ -2,6 +2,29 @@
 # RSS Feeds Configuration for Prentiss County News
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# Category routing
+# -----------------------------------------------------------------------------
+# Every feed below files its stories under "Local News", which left the town
+# archives empty - /category/booneville-ms-news/ had not seen a new post since
+# January 2022 even though we publish Booneville stories most days. These rules
+# add the town category on top of the feed default, matching on the rewritten
+# headline only, so those archives stay current.
+#
+# Permalinks are /%category%/%postname%/ and WordPress builds them from the
+# LOWEST category ID (Prentiss County News = 2, Booneville MS News = 81,
+# Local News = 165). So a story matching both town rules would publish under
+# /prentiss-county-news/ and lose the Booneville keyword in its URL. The
+# negative lookahead on the county rule is what prevents that - keep it.
+category_rules:
+  - pattern: '\bBooneville\b'
+    category: "Booneville MS News"
+
+  # Other Prentiss County towns - only when Booneville is not already in play.
+  # Marietta carries a guard because the feeds also carry Marietta, Georgia items.
+  - pattern: '^(?!.*\bBooneville\b).*\b(Baldwyn|Jumpertown|Marietta(?!,\s*(?:GA|Georgia)\b)|New Site|Thrasher|Wheeler)\b'
+    category: "Prentiss County News"
+
 feeds:
   # --- FetchRSS Feed 1 ---
   - name: "Local Feed 1"

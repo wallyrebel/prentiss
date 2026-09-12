@@ -315,6 +315,7 @@ class WordPressClient:
         content: str,
         excerpt: str = "",
         category_id: Optional[int] = None,
+        category_ids: Optional[list[int]] = None,
         tag_ids: Optional[list[int]] = None,
         featured_media_id: Optional[int] = None,
         source_url: Optional[str] = None,
@@ -326,7 +327,8 @@ class WordPressClient:
             title: Post title.
             content: Post content (HTML).
             excerpt: Post excerpt.
-            category_id: Category ID.
+            category_id: Single category ID (kept for backwards compatibility).
+            category_ids: Category IDs; takes precedence over category_id.
             tag_ids: List of tag IDs.
             featured_media_id: Featured image media ID.
             source_url: Original source URL for attribution.
@@ -361,8 +363,11 @@ class WordPressClient:
         if excerpt:
             post_data["excerpt"] = excerpt
 
-        if category_id:
-            post_data["categories"] = [category_id]
+        # WordPress builds the permalink from the lowest category ID, so the order
+        # here does not decide the URL - sending every matched category does.
+        resolved_categories = category_ids or ([category_id] if category_id else [])
+        if resolved_categories:
+            post_data["categories"] = sorted(set(resolved_categories))
 
         if tag_ids:
             post_data["tags"] = tag_ids

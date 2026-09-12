@@ -110,6 +110,45 @@ feeds:
     use_original_title: false      # Optional: Keep original title (default: false)
 ```
 
+## Category Routing
+
+A feed can only carry one `default_category`, which means every story from every
+feed lands in the same bucket. `category_rules` adds further categories on top,
+based on the rewritten headline:
+
+```yaml
+category_rules:
+  - pattern: '\bBooneville\b'      # Case-insensitive regex
+    category: "Booneville MS News" # Added alongside the feed's default_category
+```
+
+Rules match against the **headline only**, not the body — a passing mention of a
+town in the body does not make the story that town's news. Every matching rule
+applies, and the category is created if it does not exist.
+
+This keeps the town archives current: `/category/booneville-ms-news/` had gone
+without a new post since January 2022 while Booneville stories were published
+most days under "Local News".
+
+### Ordering and permalinks
+
+Permalinks are `/%category%/%postname%/`, and **WordPress builds them from the
+lowest category ID**, not from the order in `feeds.yaml`. On this site:
+
+| Category | ID |
+|---|---|
+| Prentiss County News | 2 |
+| Booneville MS News | 81 |
+| Local News | 165 |
+
+So a story matching both town rules would publish under `/prentiss-county-news/`
+and lose the Booneville keyword from its URL. The county rule carries a negative
+lookahead (`^(?!.*\bBooneville\b)`) to prevent that — keep it when editing.
+
+Adding a category to an **existing** post changes its permalink. The old URL keeps
+working (WordPress serves it and the canonical points at the new one), but it is
+still a URL change worth being deliberate about.
+
 ## GitHub Actions Setup
 
 The workflow runs every 15 minutes automatically.

@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from rss_to_wp import __version__
 from rss_to_wp.config import (
     AppSettings,
+    CategoryRule,
     FeedConfig,
     get_app_settings,
     load_feeds_config,
@@ -162,6 +163,7 @@ def run(
         try:
             processed, skipped, errors = process_feed(
                 feed_config=feed_config,
+                category_rules=feeds_config.category_rules,
                 settings=settings,
                 dedupe_store=dedupe_store,
                 rewriter=rewriter,
@@ -226,6 +228,7 @@ def run(
 
 def process_feed(
     feed_config: FeedConfig,
+    category_rules: list[CategoryRule],
     settings: AppSettings,
     dedupe_store: DedupeStore,
     rewriter: OpenAIRewriter,
@@ -285,6 +288,7 @@ def process_feed(
             result = process_entry(
                 entry=entry,
                 feed_config=feed_config,
+                category_rules=category_rules,
                 settings=settings,
                 rewriter=rewriter,
                 wp_client=wp_client,
@@ -350,6 +354,7 @@ def process_feed(
 def process_entry(
     entry,
     feed_config: FeedConfig,
+    category_rules: list[CategoryRule],
     settings: AppSettings,
     rewriter: OpenAIRewriter,
     wp_client: Optional[WordPressClient],
@@ -422,10 +427,33 @@ def process_entry(
             alt_text=image_alt,
         )
 
-    # Get/create category
-    category_id = None
-    if not dry_run and wp_client and feed_config.default_category:
-        category_id = wp_client.get_or_create_category(feed_config.default_category)
+    # Work out which categories this story belongs in: the feed's default plus any
+    # rule whose pattern matches the rewritten headline. Matching the headline (not
+    # the body) keeps it tight - a passing mention of a town in the body does not
+    # make the story that town's news.
+    category_names = []
+    if feed_config.default_category:
+        category_names.append(feed_config.default_category)
+    matched_names = [
+        rule.category
+        for rule in category_rules
+        if rule.matches(rewritten["headline"]) and rule.category not in category_names
+    ]
+    category_names.extend(matched_names)
+
+    if matched_names:
+        logger.info(
+            "category_rules_matched",
+            headline=rewritten["headline"][:50],
+            categories=matched_names,
+        )
+
+    category_ids = []
+    if not dry_run and wp_client:
+        for name in category_names:
+            cat_id = wp_client.get_or_create_category(name)
+            if cat_id:
+                category_ids.append(cat_id)
 
     # Get/create tags
     tag_ids = []
@@ -439,7 +467,7 @@ def process_entry(
             headline=rewritten["headline"][:50],
             body_length=len(rewritten["body"]),
             has_image=featured_media_id is not None or image_result is not None,
-            category=feed_config.default_category,
+            categories=category_names,
             tags=feed_config.default_tags,
         )
         return {"id": 0, "link": "dry-run://not-published"}
@@ -451,7 +479,7 @@ def process_entry(
         title=rewritten["headline"],
         content=rewritten["body"],
         excerpt=rewritten.get("excerpt", ""),
-        category_id=category_id,
+        category_ids=category_ids,
         tag_ids=tag_ids,
         featured_media_id=featured_media_id,
         source_url=link,

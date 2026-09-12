@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -31,10 +32,37 @@ class FeedConfig(BaseModel):
         return v
 
 
+class CategoryRule(BaseModel):
+    """Put a story in an extra category when its headline matches a pattern.
+
+    Feeds only carry a single default_category, so every story lands in the same
+    catch-all bucket. These rules add the town/topic category on top of it, which
+    is what keeps archives like /category/booneville-ms-news/ current.
+    """
+
+    pattern: str
+    category: str
+
+    @field_validator("pattern")
+    @classmethod
+    def validate_pattern(cls, v: str) -> str:
+        """Ensure the pattern is a usable regex."""
+        try:
+            re.compile(v, re.IGNORECASE)
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern: {v} ({e})")
+        return v
+
+    def matches(self, headline: str) -> bool:
+        """True if this rule applies to the given headline."""
+        return re.search(self.pattern, headline, re.IGNORECASE) is not None
+
+
 class FeedsConfig(BaseModel):
     """Container for all feed configurations."""
 
     feeds: list[FeedConfig] = Field(default_factory=list)
+    category_rules: list[CategoryRule] = Field(default_factory=list)
 
 
 class AppSettings(BaseSettings):
