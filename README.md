@@ -1,6 +1,6 @@
-# Alcorn County News - RSS to WordPress Automation
+# Prentiss County News - RSS to WordPress Automation
 
-Automated RSS feed monitoring, AI-powered article rewriting, and WordPress publishing for [Alcorn News MS](https://alcornnewsms.com/).
+Automated RSS feed monitoring, AI-powered article rewriting, and WordPress publishing for [Prentiss County News](https://prentissnews.com/).
 
 ## Features
 
@@ -19,8 +19,8 @@ Automated RSS feed monitoring, AI-powered article rewriting, and WordPress publi
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/wallyrebel/alcorn.git
-cd alcorn
+git clone https://github.com/wallyrebel/prentiss.git
+cd prentiss
 
 # Create virtual environment
 python -m venv .venv
