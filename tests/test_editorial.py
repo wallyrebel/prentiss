@@ -17,6 +17,7 @@ from rss_to_wp.editorial import (
     candidate_groups,
     canonical_source_url,
     plain_text,
+    review_schema,
     unique_source_text,
     validate_article,
     validate_proposed_groups,
@@ -393,8 +394,23 @@ def test_invisible_feed_characters_do_not_break_real_evidence(review, source, po
     source.text = source.text.replace(". ", ".\u2060 ")
     assert not validate_review(review, [source], policy)
     assert plain_text("\U0001d406\U0001d400\U0001d40c\U0001d404") == "GAME"
-    assert plain_text('<strong>Monday</strong>, October 5.') == "Monday, October 5."
-    assert plain_text('Monday , October 5 .') == "Monday, October 5."
+    assert plain_text("<strong>Monday</strong>, October 5.") == "Monday, October 5."
+    assert plain_text("Monday , October 5 .") == "Monday, October 5."
+
+
+def test_review_schema_requires_every_w_and_limits_quotes_to_sources(source):
+    schema = review_schema([source])
+    coverage = schema["properties"]["coverage"]
+    assert set(coverage["required"]) == {"who", "what", "where", "when", "why", "local_relevance"}
+    assert coverage["additionalProperties"] is False
+    quotes = schema["$defs"]["Evidence"]["properties"]["quote"]["enum"]
+    assert len(quotes) >= 6
+    assert all(q in plain_text(source.text) for q in quotes)
+
+
+def test_null_coverage_is_a_rejection_not_a_crash(review, source, policy):
+    review.coverage["why"] = None
+    assert "missing_5w_evidence" in validate_review(review, [source], policy)
 
 
 def test_format_revision_can_recover_a_complete_story(article, review, source, policy):

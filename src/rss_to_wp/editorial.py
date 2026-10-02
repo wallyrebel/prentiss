@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from rss_to_wp.config import FeedConfig, QualityPolicy
 
-POLICY_VERSION = "2026-10-02-v2"
+POLICY_VERSION = "2026-10-02-v3"
 LOCAL_TERMS = re.compile(
     r"\b(Prentiss County|Booneville|Baldwyn|Jumpertown|New Site|Thrasher|Wheeler|NEMCC|Northeast Mississippi Community College)\b",
     re.I,
@@ -170,7 +170,7 @@ class Review(BaseModel):
     attribution_correct: StrictBool
     no_conflicts: StrictBool
     not_duplicate: StrictBool
-    coverage: dict[str, Evidence]
+    coverage: dict[str, Evidence | None]
     facts: list[Evidence]
 
 
@@ -222,13 +222,15 @@ def validate_review(review: Review, sources: list[Source], policy: QualityPolicy
     ):
         if getattr(review, field) is not True:
             errors.append(field)
-    if set(review.coverage) != {"who", "what", "where", "when", "why", "local_relevance"}:
+    if set(review.coverage) != {"who", "what", "where", "when", "why", "local_relevance"} or any(
+        e is None for e in review.coverage.values()
+    ):
         errors.append("missing_5w_evidence")
     if len({e.answer.casefold().strip() for e in review.facts}) < policy.min_facts:
         errors.append("too_few_distinct_facts")
     if len({e.quote.casefold().strip() for e in review.facts}) < policy.min_facts:
         errors.append("repeated_fact_evidence")
-    evidence = list(review.coverage.values()) + review.facts
+    evidence = [e for e in review.coverage.values() if e is not None] + review.facts
     for e in evidence:
         if (
             e.source_index >= len(sources)
@@ -240,6 +242,36 @@ def validate_review(review: Review, sources: list[Source], policy: QualityPolicy
     if set(e.source_index for e in evidence) != set(range(len(sources))):
         errors.append("unused_source")
     return errors
+
+
+def review_schema(sources):
+    """Constrain evidence to actual source sentences, not model-written quotes."""
+    schema = Review.model_json_schema()
+    keys = ["who", "what", "where", "when", "why", "local_relevance"]
+    schema["properties"]["coverage"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": keys,
+        "properties": {
+            key: {"anyOf": [{"$ref": "#/$defs/Evidence"}, {"type": "null"}]} for key in keys
+        },
+    }
+    quotes = sorted(
+        {
+            sentence.strip()
+            for source in sources
+            for sentence in re.split(r"(?<=[.!?])\s+", plain_text(source.text))
+            if len(sentence.strip()) >= 15
+        }
+    )
+    if not quotes:
+        raise ValueError("No source passages available for review")
+    evidence = schema["$defs"]["Evidence"]["properties"]
+    evidence["quote"] = {"type": "string", "enum": quotes}
+    evidence["source_index"] = {"type": "integer", "enum": list(range(len(sources)))}
+    # Local Pydantic validation retains the answer-length constraint.
+    evidence["answer"] = {"type": "string"}
+    return schema
 
 
 def validate_proposed_groups(proposals, sources, policy):
