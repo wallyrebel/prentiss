@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -20,7 +19,8 @@ class FeedConfig(BaseModel):
     url: str
     default_category: Optional[str] = None
     default_tags: list[str] = Field(default_factory=list)
-    max_per_run: int = 5
+    max_per_run: int = Field(default=2, ge=1, le=20)
+    source_name: Optional[str] = None
     use_original_title: bool = False
 
     @field_validator("url")
@@ -58,11 +58,26 @@ class CategoryRule(BaseModel):
         return re.search(self.pattern, headline, re.IGNORECASE) is not None
 
 
+class QualityPolicy(BaseModel):
+    """Editorial thresholds, not promises of a Google ranking benefit."""
+
+    min_source_words: int = Field(default=180, ge=100)
+    min_article_words: int = Field(default=250, ge=150)
+    max_article_words: int = Field(default=900, ge=250)
+    min_facts: int = Field(default=6, ge=5)
+    max_expansion_ratio: float = Field(default=1.6, ge=1, le=2)
+    max_posts_per_run: int = Field(default=3, ge=1, le=10)
+    max_reviews_per_run: int = Field(default=12, ge=1, le=40)
+    max_sources_per_article: int = Field(default=3, ge=1, le=4)
+    audience: str = "Prentiss County, Mississippi; Booneville, Baldwyn, Jumpertown, New Site, Marietta, Thrasher and Wheeler"
+
+
 class FeedsConfig(BaseModel):
     """Container for all feed configurations."""
 
     feeds: list[FeedConfig] = Field(default_factory=list)
     category_rules: list[CategoryRule] = Field(default_factory=list)
+    quality: QualityPolicy = Field(default_factory=QualityPolicy)
 
 
 class AppSettings(BaseSettings):
@@ -76,13 +91,17 @@ class AppSettings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = Field(..., description="OpenAI API key")
-    openai_model: str = Field(default="gpt-4.1-nano", description="OpenAI model to use")
+    openai_model: str = Field(default="gpt-4.1-mini", description="OpenAI model to use")
+    openai_review_model: str = Field(
+        default="gpt-4.1-mini", description="Independent editorial review model"
+    )
 
     # WordPress
     wordpress_base_url: str = Field(..., description="WordPress site URL")
     wordpress_username: str = Field(..., description="WordPress username")
     wordpress_app_password: str = Field(..., description="WordPress application password")
     wordpress_post_status: str = Field(default="publish", description="Post status")
+    use_stock_images: bool = False
 
     # Image fallback providers (optional)
     pexels_api_key: Optional[str] = Field(default=None, description="Pexels API key")
@@ -96,7 +115,9 @@ class AppSettings(BaseSettings):
     # Email notifications (optional)
     smtp_email: Optional[str] = Field(default=None, description="SMTP sender email")
     smtp_password: Optional[str] = Field(default=None, description="SMTP password/app password")
-    notification_email: Optional[str] = Field(default=None, description="Email to send notifications to")
+    notification_email: Optional[str] = Field(
+        default=None, description="Email to send notifications to"
+    )
 
     @field_validator("wordpress_base_url")
     @classmethod

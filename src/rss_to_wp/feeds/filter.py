@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from calendar import timegm
 from datetime import datetime
-from time import mktime, struct_time
+from email.utils import parsedate_to_datetime
+from time import struct_time
 from typing import Any, Optional
 
 import pendulum
@@ -35,7 +37,7 @@ def parse_entry_date(entry: dict[str, Any]) -> Optional[datetime]:
         if field in entry and entry[field]:
             try:
                 time_struct: struct_time = entry[field]
-                timestamp = mktime(time_struct)
+                timestamp = timegm(time_struct)
                 return datetime.fromtimestamp(timestamp, tz=pendulum.UTC)
             except (TypeError, ValueError, OverflowError):
                 continue
@@ -47,7 +49,10 @@ def parse_entry_date(entry: dict[str, Any]) -> Optional[datetime]:
             try:
                 return pendulum.parse(entry[field])
             except Exception:
-                continue
+                try:
+                    return pendulum.instance(parsedate_to_datetime(entry[field]))
+                except (TypeError, ValueError, OverflowError):
+                    continue
 
     return None
 
@@ -74,7 +79,7 @@ def is_within_window(
     # Convert entry_date to pendulum for comparison
     entry_pendulum = pendulum.instance(entry_date)
 
-    return entry_pendulum >= cutoff
+    return cutoff <= entry_pendulum <= now.add(minutes=5)
 
 
 def pick_entries(

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
+from html import escape
 from typing import Optional
-from urllib.parse import quote
 
+import pendulum
 import requests
+from bs4 import BeautifulSoup
 
+from rss_to_wp.editorial import canonical_source_url
 from rss_to_wp.utils import get_logger
 from rss_to_wp.wordpress.media import wp_upload_media
 
@@ -40,10 +44,12 @@ class WordPressClient:
 
         self.session = requests.Session()
         self.session.auth = (username, password)
-        self.session.headers.update({
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        })
+        self.session.headers.update(
+            {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        )
 
         self._category_cache: dict[str, int] = {}
         self._tag_cache: dict[str, int] = {}
@@ -96,7 +102,7 @@ class WordPressClient:
 
         except Exception as e:
             logger.warning("duplicate_check_error", slug=slug, error=str(e))
-            return False  # Assume no duplicate on error
+            raise RuntimeError("WordPress duplicate lookup failed; refusing to publish") from e
 
     def check_duplicate_by_source_url(self, source_url: str) -> bool:
         """Check if a post containing this source URL already exists.
@@ -116,35 +122,68 @@ class WordPressClient:
 
         try:
             # Search for posts containing the source URL
+            canonical = canonical_source_url(source_url)
+            for page in range(1, 21):
+                response = self.session.get(
+                    self._api_url("posts"),
+                    params={
+                        "search": canonical,
+                        "status": "publish,future,draft,pending,private",
+                        "per_page": 100,
+                        "page": page,
+                    },
+                    timeout=(10, 30),
+                )
+                response.raise_for_status()
+                posts = response.json()
+                if not isinstance(posts, list):
+                    raise ValueError("Invalid WordPress duplicate response")
+                for post in posts:
+                    content = post.get("content", {}).get("rendered", "")
+                    for link in BeautifulSoup(content, "html.parser").find_all("a", href=True):
+                        try:
+                            if canonical_source_url(link["href"]) == canonical:
+                                return True
+                        except ValueError:
+                            continue
+                if page >= int(response.headers.get("X-WP-TotalPages", 1)):
+                    return False
+            raise RuntimeError("Duplicate search exceeded page limit")
+
+        except Exception as e:
+            logger.warning("source_url_check_error", source_url=source_url[:60], error=str(e))
+            raise RuntimeError("WordPress source lookup failed; refusing to publish") from e
+
+    def recent_stories(self, hours: int = 72) -> list[dict]:
+        """Retrieve recent context for event-level duplicate review; fail on outage."""
+        stories = []
+        for page in range(1, 6):
             response = self.session.get(
                 self._api_url("posts"),
                 params={
-                    "search": source_url,
-                    "status": "any",
-                    "per_page": 5,
+                    "after": pendulum.now("UTC").subtract(hours=hours).to_iso8601_string(),
+                    "status": "publish,future,draft,pending,private",
+                    "per_page": 100,
+                    "page": page,
+                    "_fields": "id,date,title,excerpt",
                 },
                 timeout=(10, 30),
             )
             response.raise_for_status()
-            posts = response.json()
-
-            # Check if any post actually contains this exact URL
-            for post in posts:
-                content = post.get("content", {}).get("rendered", "")
-                if source_url in content:
-                    logger.info(
-                        "duplicate_found_by_source_url",
-                        source_url=source_url[:60],
-                        post_id=post.get("id"),
-                        post_title=post.get("title", {}).get("rendered", "")[:50],
-                    )
-                    return True
-
-            return False
-
-        except Exception as e:
-            logger.warning("source_url_check_error", source_url=source_url[:60], error=str(e))
-            return False  # Assume no duplicate on error
+            for post in response.json():
+                stories.append(
+                    {
+                        "id": post["id"],
+                        "date": post["date"],
+                        "title": BeautifulSoup(post["title"]["rendered"], "html.parser").get_text(),
+                        "excerpt": BeautifulSoup(
+                            post["excerpt"]["rendered"], "html.parser"
+                        ).get_text()[:700],
+                    }
+                )
+            if page >= int(response.headers.get("X-WP-TotalPages", 1)):
+                return stories
+        raise RuntimeError("Recent story lookup exceeded limit")
 
     def get_or_create_category(self, name: str) -> Optional[int]:
         """Get category ID, creating it if it doesn't exist.
@@ -320,6 +359,7 @@ class WordPressClient:
         featured_media_id: Optional[int] = None,
         source_url: Optional[str] = None,
         status: Optional[str] = None,
+        sources: Optional[list[dict]] = None,
     ) -> Optional[dict]:
         """Create a new WordPress post.
 
@@ -338,26 +378,42 @@ class WordPressClient:
             Created post data or None.
         """
         # PRIMARY CHECK: Check for duplicate by source URL (most reliable - URL never changes)
-        if source_url and self.check_duplicate_by_source_url(source_url):
+        sources = sources or (
+            [{"url": source_url, "name": "Original source"}] if source_url else []
+        )
+        if not sources:
+            raise ValueError("At least one source is required")
+        sources = [{"url": canonical_source_url(s["url"]), "name": s["name"]} for s in sources]
+        if any(self.check_duplicate_by_source_url(s["url"]) for s in sources):
             logger.warning(
                 "skipping_duplicate_post_by_source",
                 title=title[:50],
-                source_url=source_url[:60],
+                source_url=sources[0]["url"][:60],
             )
             # Return special dict to indicate this was a duplicate, not an error
             return {"duplicate": True, "source_url": source_url}
-        
+
         self._rate_limit()
 
-        # Add source attribution to content
-        if source_url:
-            source_html = f'\n\n<p><em>Source: <a href="{source_url}" target="_blank" rel="noopener">Original Article</a></em></p>'
-            content = content + source_html
+        # A deterministic suffix also protects cache-loss/ambiguous POST retries.
+        digest = hashlib.sha256("|".join(sorted(s["url"] for s in sources)).encode()).hexdigest()[
+            :12
+        ]
+        slug = f"{self._slugify(title)[:140]}-{digest}"
+        if self.check_duplicate_by_slug(slug):
+            return {"duplicate": True}
+        links = "; ".join(
+            f'<a href="{escape(s["url"], quote=True)}" rel="noopener">{escape(s["name"])}</a>'
+            for s in sources
+        )
+        content += f"\n<p><em>Sources: {links}</em></p>"
+        content += '\n<p><em>Prepared with AI assistance from the linked sources. Corrections may be submitted through our <a href="/contact/">contact page</a>.</em></p>'
 
         post_data = {
             "title": title,
             "content": content,
             "status": status or self.default_status,
+            "slug": slug,
         }
 
         if excerpt:
