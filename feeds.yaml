@@ -1,135 +1,90 @@
-# =============================================================================
-# RSS Feeds Configuration for Prentiss County News
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Category routing
-# -----------------------------------------------------------------------------
-# Every feed below files its stories under "Local News", which left the town
-# archives empty - /category/booneville-ms-news/ had not seen a new post since
-# January 2022 even though we publish Booneville stories most days. These rules
-# add the town category on top of the feed default, matching on the rewritten
-# headline only, so those archives stay current.
-#
-# Permalinks are /%category%/%postname%/ and WordPress builds them from the
-# LOWEST category ID (Prentiss County News = 2, Booneville MS News = 81,
-# Local News = 165). So a story matching both town rules would publish under
-# /prentiss-county-news/ and lose the Booneville keyword in its URL. The
-# negative lookahead on the county rule is what prevents that - keep it.
+# Sources retain their original feed names for manual workflow compatibility.
+# Category routing preserves existing permalink behavior.
 category_rules:
-  - pattern: '\bBooneville\b'
-    category: "Booneville MS News"
-
-  # Other Prentiss County towns - only when Booneville is not already in play.
-  # Marietta carries a guard because the feeds also carry Marietta, Georgia items.
-  - pattern: '^(?!.*\bBooneville\b).*\b(Baldwyn|Jumpertown|Marietta(?!,\s*(?:GA|Georgia)\b)|New Site|Thrasher|Wheeler)\b'
-    category: "Prentiss County News"
-
+- pattern: \bBooneville\b
+  category: Booneville MS News
+- pattern: ^(?!.*\bBooneville\b).*\b(Baldwyn|Jumpertown|Marietta(?!,\s*(?:GA|Georgia)\b)|New
+    Site|Thrasher|Wheeler)\b
+  category: Prentiss County News
 feeds:
-  # --- FetchRSS Feed 1 ---
-  - name: "Local Feed 1"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vfoORA4wG0o.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 2 ---
-  - name: "Local Feed 2"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vfgOm7bS9wZ.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 3 ---
-  - name: "Local Feed 3"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vdUuY5240MW.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 4 ---
-  - name: "Local Feed 4"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQkh8y8Dwo.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 5 ---
-  - name: "Local Feed 5"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vcd7T1vE718.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 6 ---
-  - name: "Local Feed 6"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vcd689iq9Ap.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 7 ---
-  - name: "Local Feed 7"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQmMDQnBLX.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 8 ---
-  - name: "Local Feed 8"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQn25aq35m.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 9 ---
-  - name: "Local Feed 9"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQo05nA1Lx.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 10 ---
-  - name: "Local Feed 10"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQoj9p490W.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 11 ---
-  - name: "Local Feed 11"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vgQpa7W4E67.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
-
-  # --- FetchRSS Feed 12 ---
-  - name: "Local Feed 12"
-    url: "https://fetchrss.com/feed/1vcaujD2G3c21vccum0Dj2Ne.rss"
-    default_category: "Local News"
-    default_tags:
-      - "Mississippi"
-      - "Prentiss County"
-    max_per_run: 3
+- name: Local Feed 1
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vfoORA4wG0o.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Mississippi Department of Wildlife, Fisheries, and Parks
+- name: Local Feed 2
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vfgOm7bS9wZ.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: First Circuit District Attorney's Office
+- name: Local Feed 3
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vdUuY5240MW.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Northeast Mississippi Community College
+- name: Local Feed 4
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vgQkh8y8Dwo.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Northeast Tiger Athletics
+- name: Local Feed 5
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vcd7T1vE718.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Mississippi Department of Public Safety (Official)
+- name: Local Feed 6
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vcd689iq9Ap.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Booneville Police Department
+- name: Local Feed 7
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vgQmMDQnBLX.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Prentiss County Sheriff's Department
+- name: Local Feed 8
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vgQn25aq35m.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: City of Booneville
+- name: Local Feed 9
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vgQo05nA1Lx.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Baldwyn School District
+- name: Local Feed 10
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vgQoj9p490W.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Booneville School District - Mississippi
+- name: Local Feed 11
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vgQpa7W4E67.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Booneville High School - Booneville, Mississippi
+- name: Local Feed 12
+  url: https://fetchrss.com/feed/1vcaujD2G3c21vccum0Dj2Ne.rss
+  default_category: Local News
+  default_tags: []
+  max_per_run: 2
+  source_name: Tate Reeves
+quality:
+  min_source_words: 180
+  min_article_words: 250
+  max_article_words: 900
+  min_facts: 6
+  max_expansion_ratio: 1.6
+  max_posts_per_run: 3
+  max_reviews_per_run: 12
+  max_sources_per_article: 3

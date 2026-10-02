@@ -7,6 +7,7 @@ from typing import Any, Optional
 import feedparser
 
 from rss_to_wp.utils import get_logger
+from rss_to_wp.utils.http import fetch_url_content
 
 logger = get_logger("feeds.parser")
 
@@ -23,7 +24,7 @@ def parse_feed(url: str) -> Optional[dict[str, Any]]:
     logger.info("parsing_feed", url=url)
 
     try:
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(fetch_url_content(url))
 
         # Check for parsing errors
         if feed.bozo and feed.bozo_exception:
@@ -68,10 +69,12 @@ def get_entry_content(entry: dict[str, Any]) -> str:
         # content is usually a list
         contents = entry["content"]
         if isinstance(contents, list) and len(contents) > 0:
-            return contents[0].get("value", "")
+            for item in contents:
+                if item.get("value", "").strip():
+                    return item["value"]
 
     # Fall back to summary
-    if "summary" in entry:
+    if entry.get("summary"):
         return entry.get("summary", "")
 
     # Last resort: description

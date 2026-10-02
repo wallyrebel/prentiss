@@ -1,280 +1,121 @@
-# Prentiss County News - RSS to WordPress Automation
+# Prentiss County News publishing
 
-Automated RSS feed monitoring, AI-powered article rewriting, and WordPress publishing for [Prentiss County News](https://prentissnews.com/).
+Quality-controlled RSS publishing for https://prentissnews.com. The system is allowed
+to publish **zero** articles. Word counts are editorial guardrails, not a Google
+ranking target or a reason to expand thin source material.
 
-## Features
+## Editorial policy
 
-- **RSS Feed Monitoring**: Parse RSS/Atom feeds with robust error handling
-- **AI Rewriting**: Convert press releases to AP-style news articles using GPT-5 mini
-- **Smart Deduplication**: SQLite-based tracking ensures no duplicate posts
-- **Image Handling**: 
-  - Extract images from RSS (media:content, enclosures, HTML)
-  - Fallback to Pexels/Unsplash for stock photos
-  - Proper attribution in alt text
-- **WordPress Publishing**: Full REST API integration with categories and tags
-- **Scheduling**: GitHub Actions (every 15 min) or VPS cron/systemd
+1. Collect all dated sources from the last 72 hours. Skip future/undated items and
+   previously published source URLs. Prefer local, substantive sources.
+2. Propose combinations of up to three short sources with substantial shared
+   vocabulary and dates within 24 hours. The separate editor must confirm that all
+   describe the same event, actors, place and time. A heuristic match alone cannot publish.
+3. Require at least 180 source words after removing repeated sentences. Images,
+   video links and repeated/syndicated text do not count as additional reporting.
+4. Write 250–900 words **only if supported**; limit expansion to 1.6 times source
+   length. Otherwise skip. No filler, invented dates, inferred motives or promotional copy.
+5. A separate review call checks every claim in the headline, excerpt and article,
+   who/what/where/when/why, local relevance, attribution, useful details, duplication,
+   and contradictions. Require six distinct facts and verbatim evidence found in the
+   supplied source text. Missing/malformed/truncated responses fail closed.
+6. Compare against recent WordPress headlines and excerpts to avoid competing
+   articles about the same event. Updates to existing articles require editorial work.
+7. Only then resolve categories, upload an available source image, and publish.
+   Stock fallback is disabled. Each contributing source receives a named link;
+   an AI-assistance disclosure and corrections link are appended after word checks.
 
-## Quick Start
+These automated checks reduce risk but do not establish factual truth. Periodically
+review accepted and rejected examples. Do not lower the thresholds just to fill a quota.
+Sources are the supplied RSS text; the system does not read text inside images,
+watch videos, bypass login walls, or silently fetch arbitrary linked pages.
 
-### 1. Clone and Install
+## Run locally
 
-```bash
-git clone https://github.com/wallyrebel/prentiss.git
-cd prentiss
+Python 3.11 or newer:
 
-# Create virtual environment
+```sh
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate   # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -e .
-```
-
-### 2. Configure Environment
-
-```bash
+# Activate the environment for your OS
+python -m pip install -e '.[dev]'
 cp .env.example .env
-# Edit .env with your API keys
-```
-
-**Required variables:**
-- `OPENAI_API_KEY` - Your OpenAI API key
-- `WORDPRESS_BASE_URL` - Your WordPress site URL
-- `WORDPRESS_USERNAME` - WordPress username
-- `WORDPRESS_APP_PASSWORD` - [Generate an Application Password](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/)
-
-**Optional variables:**
-- `PEXELS_API_KEY` - For fallback images ([Get key](https://www.pexels.com/api/))
-- `UNSPLASH_ACCESS_KEY` - For fallback images ([Get key](https://unsplash.com/developers))
-
-### 3. Configure Feeds
-
-Edit `feeds.yaml`:
-
-```yaml
-feeds:
-  - name: "Local News"
-    url: "https://example.com/rss"
-    default_category: "News"
-    default_tags:
-      - "Local"
-    max_per_run: 5
-```
-
-### 4. Run
-
-```bash
-# Full run
-python -m rss_to_wp run --config feeds.yaml
-
-# Dry run (no publishing)
+python -m pytest -q
 python -m rss_to_wp run --config feeds.yaml --dry-run
-
-# Single feed only
-python -m rss_to_wp run --config feeds.yaml --single-feed "Local News"
-
-# Check status
-python -m rss_to_wp status
+python -m rss_to_wp run --config feeds.yaml
 ```
 
-## CLI Commands
+Required environment variables: `OPENAI_API_KEY`, `WORDPRESS_BASE_URL`,
+`WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`. Keep credentials in `.env` locally
+and GitHub Actions secrets remotely. Never commit them.
 
-| Command | Description |
-|---------|-------------|
-| `run` | Process feeds and publish to WordPress |
-| `status` | Show processed entry count and recent entries |
-| `clear-db` | Clear the deduplication database |
+`OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-4.1-mini`.
+`WORDPRESS_POST_STATUS` defaults to `publish`; set `draft` for an editorial queue.
+The production workflow uses `America/Chicago` and disables stock images.
 
-### Run Options
+CLI options: `--single-feed "Local Feed 1"`, `--hours 72` (1–168), `--dry-run`.
+`status` lists processed entries. `clear-db --yes` clears processed records; it does
+not clear editorial rejection decisions. Avoid clearing production dedupe state.
 
-| Option | Description |
-|--------|-------------|
-| `--config`, `-c` | Path to feeds.yaml (default: feeds.yaml) |
-| `--dry-run`, `-n` | Process without publishing |
-| `--single-feed`, `-f` | Process only named feed |
-| `--hours`, `-h` | Time window in hours (default: 48) |
+## GitHub Actions
 
-## Feed Configuration
+The publisher runs at 02:23, 08:23, 14:23 and 20:23 UTC (four times daily). At most
+three qualifying articles per run and two per contributing feed may publish.
+At most 12 candidates use model review per run. The limits are ceilings, not targets.
 
-```yaml
-feeds:
-  - name: "Feed Name"              # Required: Display name
-    url: "https://..."             # Required: RSS/Atom URL
-    default_category: "News"       # Optional: WordPress category
-    default_tags:                  # Optional: Tags to apply
-      - "Tag1"
-      - "Tag2"
-    max_per_run: 5                 # Optional: Max entries per run (default: 5)
-    use_original_title: false      # Optional: Keep original title (default: false)
-```
+Manual runs default to dry-run. Feature branches can only run in dry-run mode.
+The publisher runs regression tests first, serializes all manual/scheduled runs,
+and saves dedupe state after partial failures. Manual feed names are passed through
+environment variables into a Bash argument array, never interpolated as shell code.
 
-## Category Routing
+Model selection uses repository **variables** `OPENAI_MODEL` and
+`OPENAI_REVIEW_MODEL`; the old `OPENAI_MODEL` secret no longer silently forces the
+previous nano model. API and WordPress credentials remain Actions secrets.
 
-A feed can only carry one `default_category`, which means every story from every
-feed lands in the same bucket. `category_rules` adds further categories on top,
-based on the rewritten headline:
+The `editorial-decisions` artifact records counts, source URLs, rejection reasons,
+and evidence for accepted stories. Errors fail the job even after partial success.
+Valid empty feeds and editorial rejections are successful outcomes.
 
-```yaml
-category_rules:
-  - pattern: '\bBooneville\b'      # Case-insensitive regex
-    category: "Booneville MS News" # Added alongside the feed's default_category
-```
+Dry-run calls the writing/review APIs but performs no WordPress requests or content
+uploads and never records published/rejected entries. Thus its output is a quality
+preview, **not** a prediction of new publication: production also checks existing
+WordPress posts. Stories accepted earlier in the same dry-run are supplied as
+duplicate-review context. Dry-run API usage is billable.
 
-Rules match against the **headline only**, not the body — a passing mention of a
-town in the body does not make the story that town's news. Every matching rule
-applies, and the category is created if it does not exist.
+SQLite is restored from the latest Actions cache, including legacy caches on first
+upgrade. Cache is not durable storage: eviction is possible. WordPress source-link
+and slug checks provide a second guard; lookup failures block publishing. A lost
+response to POST is retried only on a later run after duplicate lookup, never blindly.
+Only run a single external scheduler if deploying outside GitHub Actions.
 
-This keeps the town archives current: `/category/booneville-ms-news/` had gone
-without a new post since January 2022 while Booneville stories were published
-most days under "Local News".
+Unchanged editorial rejections are cached by source content, source URLs, policy
+version, thresholds and models. Enriched sources or a newly formed source group
+are reviewed again. Short candidates are not permanently marked as processed.
 
-### Ordering and permalinks
+## Categories and images
 
-Permalinks are `/%category%/%postname%/`, and **WordPress builds them from the
-lowest category ID**, not from the order in `feeds.yaml`. On this site:
+Keep the negative lookahead in the county category rule. Existing site permalinks
+use the lowest category ID; adding categories to old posts can change their URL.
+This publisher only assigns categories to new posts. Generic county tags are no
+longer stamped on every statewide story. Local relevance is decided by the editor.
 
-| Category | ID |
-|---|---|
-| Prentiss County News | 2 |
-| Booneville MS News | 81 |
-| Local News | 165 |
+Existing RSS image selection is retained; source attribution does not establish
+image reuse rights. Review source permissions. No fabricated image description is
+used as alt text. Stock images require explicit `USE_STOCK_IMAGES=true` and provider
+keys; a visible illustrative-image notice is then added.
 
-So a story matching both town rules would publish under `/prentiss-county-news/`
-and lose the Booneville keyword from its URL. The county rule carries a negative
-lookahead (`^(?!.*\bBooneville\b)`) to prevent that — keep it when editing.
+## Operations and site audit
 
-Adding a category to an **existing** post changes its permalink. The old URL keeps
-working (WordPress serves it and the canonical points at the new one), but it is
-still a URL change worth being deliberate about.
+- Use the report artifact to inspect rejections and API/WordPress failures.
+- A source feed entry with insufficient text must be enriched through original
+  reporting or better source feeds, not inflated by changing the prompt.
+- Monitor Search Console's server errors, successful fetches, submitted canonical
+  URLs, indexed articles, and clicks to local article pages.
+- Compare AdSense U.S. page RPM, impressions per page and viewability separately
+  from overall traffic. Geographic traffic alone does not prove invalid activity.
+- Preserve established URLs; review old duplicates for consolidation and redirects
+  individually, with source verification. Do not bulk delete short posts for SEO.
+- This repository does not contain the live WordPress theme, server configuration,
+  cache/CDN rules or AdSense settings. Its deployment cannot repair host outages.
 
-## GitHub Actions Setup
-
-The workflow runs every 15 minutes automatically.
-
-### Required Secrets
-
-Go to **Settings > Secrets and variables > Actions** and add:
-
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `OPENAI_API_KEY` | ✅ | OpenAI API key |
-| `WORDPRESS_BASE_URL` | ✅ | Site URL (e.g., `https://example.com`) |
-| `WORDPRESS_USERNAME` | ✅ | WordPress username |
-| `WORDPRESS_APP_PASSWORD` | ✅ | Application password |
-| `PEXELS_API_KEY` | ❌ | Pexels API key |
-| `UNSPLASH_ACCESS_KEY` | ❌ | Unsplash access key |
-| `TIMEZONE` | ❌ | Timezone (default: UTC) |
-
-### Manual Trigger
-
-You can manually trigger the workflow from the Actions tab with options for dry-run and single-feed.
-
-## VPS/Cron Deployment
-
-### Using Cron
-
-```bash
-# Edit crontab
-crontab -e
-
-# Add (runs every 15 minutes)
-*/15 * * * * cd /path/to/project && /path/to/.venv/bin/python -m rss_to_wp run --config feeds.yaml >> /var/log/rss-to-wp.log 2>&1
-```
-
-### Using Systemd
-
-Create `/etc/systemd/system/rss-to-wp.service`:
-
-```ini
-[Unit]
-Description=RSS to WordPress Automation
-After=network.target
-
-[Service]
-Type=oneshot
-User=www-data
-WorkingDirectory=/path/to/project
-EnvironmentFile=/path/to/project/.env
-ExecStart=/path/to/.venv/bin/python -m rss_to_wp run --config feeds.yaml
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Create `/etc/systemd/system/rss-to-wp.timer`:
-
-```ini
-[Unit]
-Description=Run RSS to WordPress every 15 minutes
-
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=15min
-
-[Install]
-WantedBy=timers.target
-```
-
-Enable:
-
-```bash
-sudo systemctl enable rss-to-wp.timer
-sudo systemctl start rss-to-wp.timer
-```
-
-## Project Structure
-
-```
-.
-├── src/rss_to_wp/
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── cli.py              # CLI commands
-│   ├── config.py           # Configuration models
-│   ├── feeds/              # RSS parsing & filtering
-│   ├── images/             # Image extraction & fallbacks
-│   ├── rewriter/           # OpenAI AP-style rewriting
-│   ├── storage/            # SQLite deduplication
-│   ├── utils/              # Logging & HTTP utilities
-│   └── wordpress/          # WP REST API client
-├── data/                   # Runtime data (gitignored)
-│   └── processed.db
-├── .github/workflows/
-│   └── rss_to_wp.yml
-├── feeds.yaml
-├── .env.example
-├── pyproject.toml
-├── requirements.txt
-└── README.md
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**"Config file not found"**
-- Ensure `feeds.yaml` exists in the working directory
-
-**"Error loading settings"**
-- Check `.env` file exists and has required variables
-- Verify no typos in environment variable names
-
-**"WordPress authentication failed"**
-- Verify Application Password is correct (no spaces in password)
-- Ensure user has publishing permissions
-
-**"No entries found"**
-- Check if RSS feed URL is accessible
-- Verify entries are within 48-hour window
-
-### Debug Mode
-
-```bash
-LOG_LEVEL=DEBUG python -m rss_to_wp run --config feeds.yaml
-```
-
-## License
-
-MIT License
+Optional SMTP utilities remain available as library code, but the publishing CLI
+does not email run summaries. Use Actions artifacts and job status for this workflow.

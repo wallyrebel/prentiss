@@ -2,115 +2,101 @@ name: RSS to WordPress Automation
 
 on:
   schedule:
-    # Run every 15 minutes
-    - cron: '*/15 * * * *'
-  
-  # Allow manual trigger
+    # Four runs/day, away from the top of the hour. UTC; 72-hour source window.
+    - cron: '23 2,8,14,20 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Run in dry-run mode (no publishing)'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+        description: Review only; do not publish or change dedupe state
+        default: true
+        type: boolean
       single_feed:
-        description: 'Process only a specific feed (by name)'
-        required: false
+        description: Optional exact feed name from feeds.yaml
         default: ''
         type: string
 
-env:
-  PYTHON_VERSION: '3.11'
+permissions:
+  contents: read
+
+# Scheduled and manual runs share one writer and one database.
+concurrency:
+  group: prentiss-wordpress-publisher
+  cancel-in-progress: false
 
 jobs:
   process-feeds:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 35
+    # A feature branch may be reviewed, but never publish using production secrets.
+    if: github.ref == 'refs/heads/main' || inputs.dry_run == true
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
+          python-version: '3.11'
+          cache: pip
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
-
-      - name: Create data directory
-        run: mkdir -p data
-
-      - name: Restore database from cache
+        run: python -m pip install -e '.[dev]'
+      - name: Test editorial gates before any publishing
+        run: python -m pytest -q
+      - run: mkdir -p data
+      - name: Restore database
         uses: actions/cache/restore@v4
         with:
           path: data/processed.db
-          key: processed-db-${{ github.run_id }}
+          key: processed-db-v2-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            processed-db-v2-
             processed-db-
-
-      - name: Run RSS to WordPress
+      - name: Review and publish qualifying articles
         env:
-          # OpenAI
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || 'gpt-4.1-nano' }}
-          
-          # WordPress
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
+          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL || 'gpt-4.1-mini' }}
           WORDPRESS_BASE_URL: ${{ secrets.WORDPRESS_BASE_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
           WORDPRESS_POST_STATUS: ${{ secrets.WORDPRESS_POST_STATUS || 'publish' }}
-          
-          # Image providers (optional)
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
-          
-          # Logging
-          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
-          TIMEZONE: ${{ secrets.TIMEZONE || 'UTC' }}
-          
-          # Email notifications (optional)
-          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+          TIMEZONE: America/Chicago
+          USE_STOCK_IMAGES: 'false'
+          DRY_RUN: ${{ inputs.dry_run || false }}
+          SINGLE_FEED: ${{ inputs.single_feed }}
+        shell: bash
         run: |
-          ARGS="--config feeds.yaml"
-          
-          # Add dry-run flag if specified
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
-          fi
-          
-          # Add single-feed flag if specified
-          if [ -n "${{ github.event.inputs.single_feed }}" ]; then
-            ARGS="$ARGS --single-feed '${{ github.event.inputs.single_feed }}'"
-          fi
-          
-          python -m rss_to_wp run $ARGS
-
-      - name: Save database to cache
+          set -euo pipefail
+          args=(--config feeds.yaml --hours 72)
+          if [[ "$DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
+          if [[ -n "$SINGLE_FEED" ]]; then args+=(--single-feed "$SINGLE_FEED"); fi
+          python -m rss_to_wp run "${args[@]}"
+      - name: Preserve database even after partial failure
+        if: always() && inputs.dry_run != true && github.ref == 'refs/heads/main' && hashFiles('data/processed.db') != ''
         uses: actions/cache/save@v4
         with:
           path: data/processed.db
-          key: processed-db-${{ github.run_id }}
-
-      - name: Summary
+          key: processed-db-v2-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Save editorial decisions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editorial-decisions-${{ github.run_id }}-${{ github.run_attempt }}
+          path: data/run-report.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Run summary
         if: always()
         run: |
-          echo "## RSS to WordPress Run Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dry Run**: ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Single Feed**: ${{ github.event.inputs.single_feed || 'All feeds' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f data/processed.db ]; then
-            COUNT=$(sqlite3 data/processed.db "SELECT COUNT(*) FROM processed_entries;" 2>/dev/null || echo "N/A")
-            echo "- **Total Processed Entries**: $COUNT" >> $GITHUB_STEP_SUMMARY
-          fi
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path('data/run-report.json')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('## Editorial publishing results\n\n')
+              if report.exists():
+                  data = json.loads(report.read_text())
+                  out.write(f"Dry run: {data['dry_run']}\n\n")
+                  for status, count in data['summary'].items():
+                      out.write(f'- {status}: {count}\n')
+                  out.write('\nSee the editorial-decisions artifact for sources and rejection reasons.\n')
+              else:
+                  out.write('No editorial report: inspect the failed setup or test step.\n')
+          PY

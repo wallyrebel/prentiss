@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +52,9 @@ class DedupeStore:
                 CREATE INDEX IF NOT EXISTS idx_feed_url
                 ON processed_entries(feed_url)
             """)
+            conn.execute("""CREATE TABLE IF NOT EXISTS quality_rejections (
+                assessment_key TEXT PRIMARY KEY, reason TEXT NOT NULL,
+                assessed_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
             conn.commit()
 
         logger.debug("database_initialized", path=str(self.db_path))
@@ -87,6 +90,34 @@ class DedupeStore:
 
         return result
 
+    def is_source_processed(self, url: str) -> bool:
+        # Ignore historical dry runs produced by the old implementation.
+        with self._get_connection() as conn:
+            return (
+                conn.execute(
+                    """SELECT 1 FROM processed_entries
+                WHERE entry_link = ? AND (wp_post_id IS NULL OR wp_post_id != 0)
+                AND COALESCE(wp_post_url, '') NOT LIKE 'dry-run:%'""",
+                    (url,),
+                ).fetchone()
+                is not None
+            )
+
+    def rejection_reason(self, key: str) -> Optional[str]:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT reason FROM quality_rejections WHERE assessment_key = ?", (key,)
+            ).fetchone()
+            return row[0] if row else None
+
+    def reject(self, key: str, reason: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO quality_rejections (assessment_key, reason) VALUES (?, ?)",
+                (key, reason),
+            )
+            conn.commit()
+
     def mark_processed(
         self,
         entry_key: str,
@@ -120,7 +151,7 @@ class DedupeStore:
                     entry_link,
                     wp_post_id,
                     wp_post_url,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                 ),
             )
             conn.commit()
