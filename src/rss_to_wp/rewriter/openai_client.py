@@ -104,6 +104,8 @@ Require at least the requested number of DISTINCT substantive facts; splitting o
 fact into fragments does not count. Supply coverage keys who, what, where, when, why,
 local_relevance. Each coverage item and fact is {"answer":"supported fact",
 "quote":"verbatim contiguous evidence from source TEXT", "source_index":0}.
+Audit all claims, but return only min_facts distinct evidence items, six coverage
+answers and a concise reason. Do not enumerate every supported claim in the output.
 Use zero-based source indexes. Quotes must be found verbatim in text, not metadata.
 Select the provided source passage from the schema's quote choices. Never quote
 the proposed article. A null coverage value means evidence is absent and requires
@@ -122,7 +124,7 @@ class OpenAIRewriter:
         self,
         api_key: str,
         model: str = "gpt-5.4-mini",
-        max_tokens: int = 6000,
+        max_tokens: int = 8000,
         review_model: str | None = None,
     ):
         self.client = OpenAI(api_key=api_key, timeout=90, max_retries=2)

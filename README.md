@@ -64,7 +64,7 @@ and GitHub Actions secrets remotely. Never commit them.
 
 `OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-5.4-mini`.
 Writing/grouping use low reasoning and editorial review uses medium, with a
-6,000-token completion cap including reasoning. The two roles use separate calls.
+8,000-token completion cap including reasoning. The two roles use separate calls.
 API logs record token usage. As of October 2, 2026, standard pricing is $0.75/M input
 and $4.50/M output: https://developers.openai.com/api/docs/models/gpt-5.4-mini .
 For illustration, 10,000 input plus 4,000 output tokens across writing/review cost
