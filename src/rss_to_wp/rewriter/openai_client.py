@@ -40,6 +40,10 @@ Return JSON. Use only facts explicitly supported by the supplied sources; do not
 invent quotes, causes, dates, locations, background, consequences, or reader advice.
 Write an original, useful synthesis with objective attribution, not promotional copy.
 Do not list audience towns or add local place names absent from the evidence.
+Preserve exact qualifiers: 'can' or 'may' is not 'will'; a Saturday schedule is not
+the whole voting period; a necessary condition is not a guarantee. Do not infer
+public enthusiasm from counts or write 'officials urge' without such a statement.
+Remove interpretive filler such as 'these figures highlight active engagement'.
 Answer who, what, where, when, and why (supported purpose, cause or public impact).
 The feed timestamp is publication time, NOT proof of event time. Resolve 'today'
 only against that source's timestamp in America/Chicago; do not guess ambiguous dates.
@@ -70,6 +74,8 @@ Audit EVERY factual claim in headline, excerpt and body against the source text,
 your memory. Reject unsupported claims, invented dates/quotes, exaggerated headlines,
 filler, repeated facts, or missing essential information. A link to a video/image is
 not evidence of its unseen contents. Do not approve an article just because it is long.
+Check modal verbs, eligibility and schedule qualifiers precisely. Do not accept
+inferred enthusiasm, invented calls to action, or a change from 'can' to 'will'.
 Require who, what, where, when and why, supported in sources AND covered in the article.
 'Why' may be a documented purpose or public consequence; never invent a motive.
 'When' must establish event timing; source publication time alone is insufficient.

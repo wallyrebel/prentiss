@@ -25,7 +25,9 @@ ranking target or a reason to expand thin source material.
    and contradictions. Require six distinct facts and verbatim evidence found in the
    supplied source text. A mechanical coverage/quote error may be rechecked once;
    an editor's factual, relevance or duplicate rejection is never overruled.
-   Invisible feed formatting is normalized before quote matching.
+   Reviews use strict structured output with every coverage field required and
+   quotes selected from actual source passages. Missing evidence is a rejection.
+   Invisible feed formatting and HTML boundary spacing are normalized before matching.
    Missing/malformed/truncated responses fail closed.
 6. Compare against recent WordPress headlines and excerpts to avoid competing
    articles about the same event. Updates to existing articles require editorial work.
