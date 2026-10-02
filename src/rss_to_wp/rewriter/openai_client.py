@@ -204,19 +204,19 @@ class OpenAIRewriter:
             review = Review.model_validate(review_data)
             errors = validate_review(review, sources, policy)
         if errors:
-            return {"skip": True, "reason": ",".join(errors) + ": " + review.reason[:400]}
+            return {
+                "skip": True,
+                "reason": ",".join(errors) + ": " + review.reason[:400],
+                "article_words": len(words(article["body"])),
+                "review": review.model_dump(),
+            }
         return {**article, "review": review.model_dump()}
 
     def group_sources(self, sources: list[Source], policy: QualityPolicy) -> list[list[Source]]:
         groups = candidate_groups(sources, policy)
         # Expand beyond lexical near-duplicates; also let modest full releases
         # contribute complementary facts. Long releases keep their own path.
-        short = [
-            s
-            for group in groups
-            for s in group
-            if 20 <= len(words(s.text)) <= 300
-        ][:60]
+        short = [s for group in groups for s in group if 20 <= len(words(s.text)) <= 300][:60]
         if len(short) < 2 or len(words(unique_source_text(short))) < policy.min_source_words:
             return groups
         proposed = self._json(

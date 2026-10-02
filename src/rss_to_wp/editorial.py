@@ -28,7 +28,10 @@ def plain_text(html: str) -> str:
         tag.decompose()
     text = unicodedata.normalize("NFKC", soup.get_text(" ", strip=True))
     text = "".join(c for c in text if unicodedata.category(c) != "Cf")
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    # HTML boundaries around linked/bold phrases insert artificial spaces.
+    # Preserve words and punctuation while matching actual contiguous quotes.
+    return re.sub(r"\s+([,.;:!?])", r"\1", text)
 
 
 def words(text: str) -> list[str]:

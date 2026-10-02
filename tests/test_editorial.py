@@ -393,6 +393,8 @@ def test_invisible_feed_characters_do_not_break_real_evidence(review, source, po
     source.text = source.text.replace(". ", ".\u2060 ")
     assert not validate_review(review, [source], policy)
     assert plain_text("\U0001d406\U0001d400\U0001d40c\U0001d404") == "GAME"
+    assert plain_text('<strong>Monday</strong>, October 5.') == "Monday, October 5."
+    assert plain_text('Monday , October 5 .') == "Monday, October 5."
 
 
 def test_format_revision_can_recover_a_complete_story(article, review, source, policy):

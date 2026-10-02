@@ -217,6 +217,7 @@ def run_pipeline(
                             "status": "skipped",
                             "reason": reason,
                             "article_words": article.get("article_words"),
+                            "review": article.get("review"),
                         }
                     )
                     if not dry_run:
