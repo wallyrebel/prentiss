@@ -41,7 +41,7 @@ def test_live_reviewer_preserves_schedule_qualifiers(incorrect_schedule):
             "Telephone registration is already available on weekdays. Saturday registration calls will be accepted on October 3 from 9 a.m. to noon. The Saturday service adds an option without changing weekday registration availability.",
             "Telephone registration begins on Saturday, October 3, from 9 a.m. to noon. Registration is not available before that Saturday opening. Families must wait until October 3 to call the library and register for the workshop.",
         )
-    model = os.getenv("OPENAI_REVIEW_MODEL", "gpt-4.1")
+    model = os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.6-luna")
     writer = OpenAIRewriter(os.environ["OPENAI_API_KEY"], model=model, review_model=model)
     data = writer._json(
         REVIEW_PROMPT,

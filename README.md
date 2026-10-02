@@ -62,8 +62,14 @@ Required environment variables: `OPENAI_API_KEY`, `WORDPRESS_BASE_URL`,
 `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`. Keep credentials in `.env` locally
 and GitHub Actions secrets remotely. Never commit them.
 
-`OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-4.1`.
-The full model replaces mini after a live review missed a schedule qualifier.
+`OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-5.6-luna`.
+Luna uses low reasoning effort, with a 6,000-token completion cap (including reasoning).
+It replaces 4.1 mini after a live review missed a schedule qualifier. The two roles
+remain separate calls, with no shared draft reasoning. Every API call logs token use.
+As of October 2, 2026, standard pricing is $0.20/M input and $1.20/M output tokens:
+https://developers.openai.com/api/docs/models/gpt-5.6-luna . For illustration, 10,000
+input plus 4,000 output tokens across writing/review cost about $0.0068. Actual costs
+include reasoning, grouping, rejected candidates and retries; this is not a per-post guarantee.
 Manual dry runs also run two synthetic model evaluations: accept a complete factual
 article and reject an otherwise similar article that changes when service begins.
 These fixtures are never published. Live evaluations use the configured review model

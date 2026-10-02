@@ -93,9 +93,9 @@ class AppSettings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = Field(..., description="OpenAI API key")
-    openai_model: str = Field(default="gpt-4.1", description="OpenAI model to use")
+    openai_model: str = Field(default="gpt-5.6-luna", description="OpenAI model to use")
     openai_review_model: str = Field(
-        default="gpt-4.1", description="Independent editorial review model"
+        default="gpt-5.6-luna", description="Independent editorial review model"
     )
 
     # WordPress

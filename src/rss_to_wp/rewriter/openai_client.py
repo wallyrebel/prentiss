@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import structlog
 from openai import OpenAI
 
 from rss_to_wp.config import QualityPolicy
@@ -109,7 +110,7 @@ class OpenAIRewriter:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4.1",
+        model: str = "gpt-5.6-luna",
         max_tokens: int = 6000,
         review_model: str | None = None,
     ):
@@ -119,6 +120,9 @@ class OpenAIRewriter:
         self.max_tokens = max_tokens
 
     def _json(self, system: str, payload: dict, model: str) -> dict:
+        # Bound reasoning cost for the selected model without sending an
+        # unsupported reasoning parameter to older model overrides.
+        options = {"reasoning_effort": "low"} if model.startswith("gpt-5.6-") else {}
         response = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -126,6 +130,7 @@ class OpenAIRewriter:
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             max_completion_tokens=self.max_tokens,
+            **options,
             response_format=(
                 {
                     "type": "json_schema",
@@ -139,6 +144,15 @@ class OpenAIRewriter:
                 else {"type": "json_object"}
             ),
         )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            structlog.get_logger(__name__).info(
+                "editorial_api_usage",
+                model=model,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+            )
         choice = response.choices[0]
         if choice.finish_reason != "stop" or getattr(choice.message, "refusal", None):
             raise ValueError("Incomplete or refused editorial response")
