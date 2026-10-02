@@ -6,9 +6,11 @@ ranking target or a reason to expand thin source material.
 
 ## Editorial policy
 
-1. Collect all dated sources from the last 72 hours. Skip future/undated items and
+1. Collect dated RSS sources from the last 72 hours. The official Mississippi
+   Secretary of State newsroom uses a seven-day window for public-service releases.
+   Skip future/undated items and
    previously published source URLs. Prefer local, substantive sources.
-2. Propose combinations of up to four short sources. In addition to lexical matches,
+2. Propose combinations of up to four sources of up to 300 words each. In addition to lexical matches,
    one bounded planning call finds complementary reports or a useful roundup on one
    local topic, within 72 hours. A roundup must label separate events in descriptive
    sections and preserve each one's who/what/where/when/why. Random news bundles,
@@ -30,10 +32,14 @@ ranking target or a reason to expand thin source material.
 7. Only then resolve categories, upload an available source image, and publish.
    Stock fallback is disabled. Each contributing source receives a named link;
    an AI-assistance disclosure and corrections link are appended after word checks.
+   Read the post back and verify status, approved text and all source links before
+   recording success. Published posts must be readable without authentication.
 
 These automated checks reduce risk but do not establish factual truth. Periodically
 review accepted and rejected examples. Do not lower the thresholds just to fill a quota.
-Sources are the supplied RSS text; the system does not read text inside images,
+Sources are supplied RSS text plus full releases from the explicitly configured
+Secretary of State newsroom. That adapter reads only dated releases on sos.ms.gov;
+external interview links and page navigation are excluded. The system does not read text inside images,
 watch videos, bypass login walls, or silently fetch arbitrary linked pages.
 
 ## Run locally

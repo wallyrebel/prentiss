@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import pendulum
 import yaml
@@ -22,6 +22,8 @@ class FeedConfig(BaseModel):
     max_per_run: int = Field(default=2, ge=1, le=20)
     source_name: Optional[str] = None
     use_original_title: bool = False
+    source_type: Literal["rss", "ms_sos_news"] = "rss"
+    max_age_hours: Optional[int] = Field(default=None, ge=1, le=168)
 
     @field_validator("url")
     @classmethod

@@ -23,6 +23,9 @@ Return JSON {"groups":[[0,1,2]]}, using supplied zero-based source indexes once 
 Group complementary reports about the same event, or a coherent local-topic roundup
 (for example the same school's career exploration activities). A roundup must add
 useful detail and keep each event, person's experience, date and place separate.
+Prefer a combined service article when related updates together answer readers'
+questions more fully (for example election registration deadlines and ballot updates).
+A source need not be below the individual minimum to benefit from complementary facts.
 Do not combine random county news, unrelated crime cases, promotions, greetings,
 image-only captions, duplicate notices or unrelated events merely to reach a word count.
 Choose up to max_sources per group, with at least min_source_words of distinct text.
@@ -206,14 +209,13 @@ class OpenAIRewriter:
 
     def group_sources(self, sources: list[Source], policy: QualityPolicy) -> list[list[Source]]:
         groups = candidate_groups(sources, policy)
-        # Expand beyond lexical near-duplicates; review at most 60 short texts
-        # in one planning call. Standalone complete sources keep their own path.
+        # Expand beyond lexical near-duplicates; also let modest full releases
+        # contribute complementary facts. Long releases keep their own path.
         short = [
             s
             for group in groups
-            if len(words(unique_source_text(group))) < policy.min_source_words
             for s in group
-            if len(words(s.text)) >= 20
+            if 20 <= len(words(s.text)) <= 300
         ][:60]
         if len(short) < 2 or len(words(unique_source_text(short))) < policy.min_source_words:
             return groups
@@ -223,7 +225,10 @@ class OpenAIRewriter:
                 "audience": policy.audience,
                 "max_sources": policy.max_sources_per_article,
                 "min_source_words": policy.min_source_words,
-                "sources": [{"source_index": i, **s.payload()} for i, s in enumerate(short)],
+                "sources": [
+                    {"source_index": i, "word_count": len(words(s.text)), **s.payload()}
+                    for i, s in enumerate(short)
+                ],
             },
             self.review_model,
         )

@@ -26,6 +26,7 @@ from rss_to_wp.feeds import (
     pick_entries,
 )
 from rss_to_wp.feeds.filter import parse_entry_date
+from rss_to_wp.feeds.official import parse_official_news
 from rss_to_wp.images import download_image, find_fallback_image, find_rss_image
 
 
@@ -34,7 +35,18 @@ def collect_sources(
 ) -> list[Source]:
     by_url = {}
     for feed_config in config.feeds:
-        feed = parse_feed(feed_config.url)
+        source_hours = feed_config.max_age_hours or hours
+        try:
+            feed = (
+                parse_official_news(feed_config.url, source_hours)
+                if feed_config.source_type == "ms_sos_news"
+                else parse_feed(feed_config.url)
+            )
+        except Exception as exc:
+            report.append(
+                {"status": "error", "feed": feed_config.name, "reason": type(exc).__name__}
+            )
+            continue
         if feed is None:
             report.append(
                 {"status": "error", "feed": feed_config.name, "reason": "feed_fetch_failed"}
@@ -45,7 +57,7 @@ def collect_sources(
         entries = pick_entries(
             feed.entries,
             max_count=len(feed.entries),
-            hours_window=hours,
+            hours_window=source_hours,
             timezone=settings.timezone,
         )
         for entry in entries:
@@ -148,7 +160,8 @@ def run_pipeline(
     per_feed = Counter()
     attempts = 0
     try:
-        recent_stories = wp.recent_stories(hours) if wp else []
+        recent_hours = max([hours] + [f.max_age_hours or hours for f in config.feeds])
+        recent_stories = wp.recent_stories(recent_hours) if wp else []
         sources = collect_sources(config, settings, store, hours, report)
         # Remove existing sources individually BEFORE grouping so one old source
         # cannot prevent new complementary sources from being reconsidered.
@@ -220,6 +233,12 @@ def run_pipeline(
                         continue
                     if not isinstance(post.get("id"), int) or post["id"] <= 0:
                         raise RuntimeError("WordPress returned no valid post ID")
+                    wp.verify_post(
+                        post["id"],
+                        expected_status=settings.wordpress_post_status,
+                        expected_content=article["body"],
+                        source_urls=[s.url for s in group],
+                    )
                     for source in group:
                         store.mark_processed(
                             source.key,
