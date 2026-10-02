@@ -39,6 +39,13 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Test editorial gates before any publishing
         run: python -m pytest -q
+      - name: Verify live reviewer accepts facts and rejects changed schedules
+        if: inputs.dry_run == true
+        env:
+          RUN_LIVE_EDITORIAL_EVALS: '1'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL || 'gpt-4.1' }}
+        run: python -m pytest tests/test_live_editorial.py -q
       - run: mkdir -p data
       - name: Restore database
         # Review current source quality even when the old publisher used it.
@@ -54,8 +61,8 @@ jobs:
       - name: Review and publish qualifying articles
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1-mini' }}
-          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL || 'gpt-4.1-mini' }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4.1' }}
+          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL || 'gpt-4.1' }}
           WORDPRESS_BASE_URL: ${{ secrets.WORDPRESS_BASE_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}

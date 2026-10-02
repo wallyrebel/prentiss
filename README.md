@@ -62,7 +62,12 @@ Required environment variables: `OPENAI_API_KEY`, `WORDPRESS_BASE_URL`,
 `WORDPRESS_USERNAME`, `WORDPRESS_APP_PASSWORD`. Keep credentials in `.env` locally
 and GitHub Actions secrets remotely. Never commit them.
 
-`OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-4.1-mini`.
+`OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-4.1`.
+The full model replaces mini after a live review missed a schedule qualifier.
+Manual dry runs also run two synthetic model evaluations: accept a complete factual
+article and reject an otherwise similar article that changes when service begins.
+These fixtures are never published. Live evaluations use the configured review model
+and incur API usage; ordinary unit tests skip them.
 `WORDPRESS_POST_STATUS` defaults to `publish`; set `draft` for an editorial queue.
 The production workflow uses `America/Chicago` and disables stock images.
 

@@ -109,7 +109,7 @@ class OpenAIRewriter:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4.1-mini",
+        model: str = "gpt-4.1",
         max_tokens: int = 6000,
         review_model: str | None = None,
     ):
