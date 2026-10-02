@@ -77,7 +77,8 @@ Valid empty feeds and editorial rejections are successful outcomes.
 
 Dry-run calls the writing/review APIs but performs no WordPress requests or content
 uploads and never records published/rejected entries. Thus its output is a quality
-preview, **not** a prediction of new publication: production also checks existing
+preview, **not** a prediction of new publication: Actions dry runs start with a
+fresh scratch database, while production restores state and checks existing
 WordPress posts. Stories accepted earlier in the same dry-run are supplied as
 duplicate-review context. Dry-run API usage is billable.
 

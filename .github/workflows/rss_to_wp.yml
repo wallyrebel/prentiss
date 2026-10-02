@@ -30,8 +30,8 @@ jobs:
     # A feature branch may be reviewed, but never publish using production secrets.
     if: github.ref == 'refs/heads/main' || inputs.dry_run == true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -41,7 +41,10 @@ jobs:
         run: python -m pytest -q
       - run: mkdir -p data
       - name: Restore database
-        uses: actions/cache/restore@v4
+        # Review current source quality even when the old publisher used it.
+        # Dry runs have no WordPress client and never save this scratch database.
+        if: inputs.dry_run != true
+        uses: actions/cache/restore@v5
         with:
           path: data/processed.db
           key: processed-db-v2-${{ github.run_id }}-${{ github.run_attempt }}
@@ -70,13 +73,13 @@ jobs:
           python -m rss_to_wp run "${args[@]}"
       - name: Preserve database even after partial failure
         if: always() && inputs.dry_run != true && github.ref == 'refs/heads/main' && hashFiles('data/processed.db') != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: data/processed.db
           key: processed-db-v2-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Save editorial decisions
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: editorial-decisions-${{ github.run_id }}-${{ github.run_attempt }}
           path: data/run-report.json

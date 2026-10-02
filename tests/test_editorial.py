@@ -380,3 +380,7 @@ def test_workflow_uses_array_arguments_and_serialization():
     assert '"${args[@]}"' in text
     run_block = text.split("shell: bash")[1].split("- name: Preserve")[0]
     assert "${{ inputs.single_feed }}" not in run_block
+    restore_block = text.split("- name: Restore database")[1].split("- name:")[0]
+    assert "if: inputs.dry_run != true" in restore_block
+    save_block = text.split("- name: Preserve database")[1].split("- name:")[0]
+    assert "inputs.dry_run != true" in save_block
