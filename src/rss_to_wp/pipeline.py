@@ -13,7 +13,6 @@ from rss_to_wp.editorial import (
     LOCAL_TERMS,
     Source,
     assessment_key,
-    candidate_groups,
     canonical_source_url,
     plain_text,
     unique_source_text,
@@ -151,7 +150,22 @@ def run_pipeline(
     try:
         recent_stories = wp.recent_stories(hours) if wp else []
         sources = collect_sources(config, settings, store, hours, report)
-        for group in candidate_groups(sources, config.quality):
+        # Remove existing sources individually BEFORE grouping so one old source
+        # cannot prevent new complementary sources from being reconsidered.
+        if wp:
+            fresh = []
+            for source in sources:
+                if wp.check_duplicate_by_source_url(source.url):
+                    report.append({"status": "duplicate", "url": source.url})
+                else:
+                    fresh.append(source)
+            sources = fresh
+        groups = (
+            rewriter.group_sources(sources, config.quality)
+            if len(sources) > 1
+            else [[s] for s in sources]
+        )
+        for group in groups:
             record = {
                 "urls": [s.url for s in group],
                 "source_words": len(words(unique_source_text(group))),
@@ -178,18 +192,20 @@ def run_pipeline(
             try:
                 # Check WordPress before model/image spending. Errors are not
                 # interpreted as permission to publish. Dry runs perform no WP IO.
-                if wp and any(wp.check_duplicate_by_source_url(s.url) for s in group):
-                    report.append({**record, "status": "duplicate"})
-                    # Do not mark every source of a mixed group as published.
-                    # Sources will be individually recognized by WP next run.
-                    continue
                 attempts += 1
                 article = rewriter.rewrite_sources(
                     group, config.quality, recent_stories=recent_stories
                 )
                 if article.get("skip"):
                     reason = article.get("reason", "editorial_rejection")
-                    report.append({**record, "status": "skipped", "reason": reason})
+                    report.append(
+                        {
+                            **record,
+                            "status": "skipped",
+                            "reason": reason,
+                            "article_words": article.get("article_words"),
+                        }
+                    )
                     if not dry_run:
                         store.reject(key, reason)
                     continue
@@ -224,6 +240,7 @@ def run_pipeline(
                         **record,
                         "status": "would_publish" if dry_run else settings.wordpress_post_status,
                         "headline": article["headline"],
+                        "body": article["body"],
                         "article_words": len(words(article["body"])),
                         "post_id": post["id"],
                         "url": post.get("link"),

@@ -87,4 +87,4 @@ quality:
   max_expansion_ratio: 1.6
   max_posts_per_run: 3
   max_reviews_per_run: 12
-  max_sources_per_article: 3
+  max_sources_per_article: 4

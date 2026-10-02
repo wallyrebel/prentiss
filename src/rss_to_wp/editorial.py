@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -14,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from rss_to_wp.config import FeedConfig, QualityPolicy
 
-POLICY_VERSION = "2026-10-02-v1"
+POLICY_VERSION = "2026-10-02-v2"
 LOCAL_TERMS = re.compile(
     r"\b(Prentiss County|Booneville|Baldwyn|Jumpertown|New Site|Thrasher|Wheeler|NEMCC|Northeast Mississippi Community College)\b",
     re.I,
@@ -25,7 +26,9 @@ def plain_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
-    return re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+    text = unicodedata.normalize("NFKC", soup.get_text(" ", strip=True))
+    text = "".join(c for c in text if unicodedata.category(c) != "Cf")
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def words(text: str) -> list[str]:
@@ -155,7 +158,7 @@ class Review(BaseModel):
     model_config = ConfigDict(extra="forbid")
     approved: StrictBool
     reason: str
-    same_event: StrictBool
+    coherent_scope: StrictBool
     all_claims_supported: StrictBool
     complete_5w: StrictBool
     locally_relevant: StrictBool
@@ -204,7 +207,7 @@ def validate_review(review: Review, sources: list[Source], policy: QualityPolicy
     errors = []
     for field in (
         "approved",
-        "same_event",
+        "coherent_scope",
         "all_claims_supported",
         "complete_5w",
         "locally_relevant",
@@ -226,10 +229,35 @@ def validate_review(review: Review, sources: list[Source], policy: QualityPolicy
     for e in evidence:
         if (
             e.source_index >= len(sources)
-            or plain_text(e.quote).casefold() not in sources[e.source_index].text.casefold()
+            or plain_text(e.quote).casefold()
+            not in plain_text(sources[e.source_index].text).casefold()
         ):
             errors.append("unverified_evidence")
             break
     if set(e.source_index for e in evidence) != set(range(len(sources))):
         errors.append("unused_source")
     return errors
+
+
+def validate_proposed_groups(proposals, sources, policy):
+    """A planner can nominate sources, never waive the article/review gates."""
+    groups = []
+    used = set()
+    if not isinstance(proposals, list):
+        return groups
+    for indexes in proposals:
+        if not isinstance(indexes, list) or not 2 <= len(indexes) <= policy.max_sources_per_article:
+            continue
+        if any(type(i) is not int or i < 0 or i >= len(sources) for i in indexes):
+            continue
+        if len(set(indexes)) != len(indexes) or used.intersection(indexes):
+            continue
+        group = [sources[i] for i in indexes]
+        dates = [datetime.fromisoformat(s.published).timestamp() for s in group]
+        if max(dates) - min(dates) > 72 * 3600:
+            continue
+        if len(words(unique_source_text(group))) < policy.min_source_words:
+            continue
+        used.update(indexes)
+        groups.append(group)
+    return groups
