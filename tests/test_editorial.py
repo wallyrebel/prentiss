@@ -16,9 +16,13 @@ from rss_to_wp.editorial import (
     assessment_key,
     candidate_groups,
     canonical_source_url,
+    plain_text,
+    review_schema,
     unique_source_text,
     validate_article,
+    validate_proposed_groups,
     validate_review,
+    words,
 )
 from rss_to_wp.feeds.filter import is_within_window, parse_entry_date
 from rss_to_wp.feeds.parser import get_entry_content
@@ -73,7 +77,7 @@ def review():
     return Review(
         approved=True,
         reason="Supported",
-        same_event=True,
+        coherent_scope=True,
         all_claims_supported=True,
         complete_5w=True,
         locally_relevant=True,
@@ -102,7 +106,7 @@ def test_each_missing_w_is_rejected(review, source, policy, field):
     "field",
     [
         "approved",
-        "same_event",
+        "coherent_scope",
         "all_claims_supported",
         "complete_5w",
         "locally_relevant",
@@ -384,3 +388,176 @@ def test_workflow_uses_array_arguments_and_serialization():
     assert "if: inputs.dry_run != true" in restore_block
     save_block = text.split("- name: Preserve database")[1].split("- name:")[0]
     assert "inputs.dry_run != true" in save_block
+
+
+def test_invisible_feed_characters_do_not_break_real_evidence(review, source, policy):
+    source.text = source.text.replace(". ", ".\u2060 ")
+    assert not validate_review(review, [source], policy)
+    assert plain_text("\U0001d406\U0001d400\U0001d40c\U0001d404") == "GAME"
+    assert plain_text("<strong>Monday</strong>, October 5.") == "Monday, October 5."
+    assert plain_text("Monday , October 5 .") == "Monday, October 5."
+
+
+def test_review_schema_requires_every_w_and_limits_quotes_to_sources(source):
+    schema = review_schema([source])
+    coverage = schema["properties"]["coverage"]
+    assert set(coverage["required"]) == {"who", "what", "where", "when", "why", "local_relevance"}
+    assert coverage["additionalProperties"] is False
+    quotes = schema["$defs"]["Evidence"]["properties"]["quote"]["enum"]
+    assert len(quotes) >= 6
+    assert all(q in plain_text(source.text) for q in quotes)
+
+
+def test_null_coverage_is_a_rejection_not_a_crash(review, source, policy):
+    review.coverage["why"] = None
+    assert "missing_5w_evidence" in validate_review(review, [source], policy)
+
+
+def test_format_revision_can_recover_a_complete_story(article, review, source, policy):
+    writer = OpenAIRewriter("test")
+    writer._json = Mock(
+        side_effect=[{**article, "body": "<p>Too short.</p>"}, article, review.model_dump()]
+    )
+    result = writer.rewrite_sources([source], policy)
+    assert not result.get("skip")
+    assert writer._json.call_count == 3
+    assert writer._json.call_args_list[1].args[1]["revision"]["actual_words"] == 2
+
+
+def test_revision_cannot_bypass_article_floor(article, source, policy):
+    writer = OpenAIRewriter("test")
+    writer._json = Mock(return_value={**article, "body": "<p>Too short.</p>"})
+    result = writer.rewrite_sources([source], policy)
+    assert result["skip"] and "article_word_count" in result["reason"]
+    assert writer._json.call_count == 2
+
+
+def test_explicit_editorial_rejection_is_not_rewritten(article, source, policy):
+    writer = OpenAIRewriter("test")
+    writer._json = Mock(return_value={"decision": "skip", "reason": "No event date"})
+    assert writer.rewrite_sources([source], policy)["skip"]
+    assert writer._json.call_count == 1
+
+
+def test_missing_quote_can_be_rechecked_without_waiving_review(article, review, source, policy):
+    bad = review.model_dump()
+    bad["coverage"].pop("where")
+    writer = OpenAIRewriter("test")
+    writer._json = Mock(side_effect=[article, bad, review.model_dump()])
+    assert not writer.rewrite_sources([source], policy).get("skip")
+    assert writer._json.call_count == 3
+
+
+def test_real_editor_rejection_cannot_be_overridden(article, review, source, policy):
+    review.all_claims_supported = False
+    writer = OpenAIRewriter("test")
+    writer._json = Mock(side_effect=[article, review.model_dump()])
+    assert writer.rewrite_sources([source], policy)["skip"]
+    assert writer._json.call_count == 2
+
+
+def test_complementary_sources_can_reach_publication(monkeypatch, tmp_path, source, settings):
+    """Exercise grouping, actual writer validators, WP delivery and second-run dedupe."""
+    from dataclasses import replace
+
+    extra = " The workshop is part of the library's October family literacy series. Staff will offer both large-print and standard-print instructions for participants. Families can choose books in English or Spanish at the session. The library will not charge a registration fee or require a deposit. The friends group paid for all donated books with proceeds from its spring sale. The meeting room is on the first floor beside the children's collection. Parking is available behind the library and along Main Street."
+    text = TEXT + extra
+    sentences = text.split(". ")
+    half = len(sentences) // 2
+    a = replace(source, text=". ".join(sentences[:half]))
+    b = replace(
+        source,
+        url="https://example.org/update",
+        key="link:update",
+        text=". ".join(sentences[half:]),
+    )
+    policy = QualityPolicy()
+    assert len(words(a.text)) < 180 and len(words(b.text)) < 180
+    article = {
+        "decision": "publish",
+        "headline": "Booneville library schedules October family reading workshop",
+        "excerpt": "The free October workshop offers reading exercises and donated books for families.",
+        "body": "".join(
+            f"<p>{'. '.join(sentences[i : i + 3])}</p>" for i in range(0, len(sentences), 3)
+        ),
+    }
+    evidence = [
+        Evidence(answer=s, quote=s, source_index=i)
+        for i, src in enumerate([a, b])
+        for s in src.text.split(". ")
+        if len(s) > 25
+    ]
+    review = Review(
+        approved=True,
+        reason="Supported",
+        coherent_scope=True,
+        all_claims_supported=True,
+        complete_5w=True,
+        locally_relevant=True,
+        useful_details=True,
+        no_padding=True,
+        attribution_correct=True,
+        no_conflicts=True,
+        not_duplicate=True,
+        coverage=dict(zip(["who", "what", "where", "when", "why", "local_relevance"], evidence)),
+        facts=evidence,
+    )
+    writer = OpenAIRewriter("test")
+    writer._json = Mock(side_effect=[{"groups": [[0, 1]]}, article, review.model_dump()])
+    store = DedupeStore(tmp_path / "db")
+    monkeypatch.setattr(
+        "rss_to_wp.pipeline.collect_sources",
+        lambda *args: [s for s in [a, b] if not store.is_source_processed(s.url)],
+    )
+    wp = Mock()
+    wp.recent_stories.return_value = []
+    wp.check_duplicate_by_source_url.return_value = False
+    wp.get_or_create_category.return_value = 1
+    wp.get_or_create_tags.return_value = []
+    wp.create_post.return_value = {
+        "id": 99,
+        "link": "https://example.org/published",
+        "status": "publish",
+    }
+    summary, posts = run_pipeline(
+        FeedsConfig(feeds=[source.feed], quality=policy),
+        settings,
+        store,
+        writer,
+        wp,
+        report_path=tmp_path / "report.json",
+    )
+    assert summary == {"publish": 1} and len(posts) == 1
+    assert len(words(wp.create_post.call_args.kwargs["content"])) >= 250
+    assert len(wp.create_post.call_args.kwargs["sources"]) == 2
+    assert store.get_processed_count() == 2
+    summary, posts = run_pipeline(
+        FeedsConfig(feeds=[source.feed], quality=policy),
+        settings,
+        store,
+        writer,
+        wp,
+        report_path=tmp_path / "report.json",
+    )
+    assert not posts and wp.create_post.call_count == 1
+
+
+@pytest.mark.parametrize("indexes", [[0, 0], [0, 8], [True, 1], [-1, 1], [0, 1, 2, 3, 4]])
+def test_invalid_combination_references_are_rejected(source, indexes):
+    assert validate_proposed_groups([indexes], [source, source], QualityPolicy()) == []
+
+
+def test_repeated_or_stale_sources_do_not_form_a_story(source):
+    from dataclasses import replace
+
+    policy = QualityPolicy(min_source_words=300)
+    assert (
+        validate_proposed_groups(
+            [[0, 1]], [source, replace(source, url="https://example.org/b")], policy
+        )
+        == []
+    )
+    stale = replace(
+        source, url="https://example.org/c", published=pendulum.now().subtract(days=5).isoformat()
+    )
+    assert validate_proposed_groups([[0, 1]], [source, stale], QualityPolicy()) == []

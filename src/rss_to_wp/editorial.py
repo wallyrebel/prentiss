@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -14,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from rss_to_wp.config import FeedConfig, QualityPolicy
 
-POLICY_VERSION = "2026-10-02-v1"
+POLICY_VERSION = "2026-10-02-v3"
 LOCAL_TERMS = re.compile(
     r"\b(Prentiss County|Booneville|Baldwyn|Jumpertown|New Site|Thrasher|Wheeler|NEMCC|Northeast Mississippi Community College)\b",
     re.I,
@@ -25,7 +26,12 @@ def plain_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
-    return re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+    text = unicodedata.normalize("NFKC", soup.get_text(" ", strip=True))
+    text = "".join(c for c in text if unicodedata.category(c) != "Cf")
+    text = re.sub(r"\s+", " ", text).strip()
+    # HTML boundaries around linked/bold phrases insert artificial spaces.
+    # Preserve words and punctuation while matching actual contiguous quotes.
+    return re.sub(r"\s+([,.;:!?])", r"\1", text)
 
 
 def words(text: str) -> list[str]:
@@ -155,7 +161,7 @@ class Review(BaseModel):
     model_config = ConfigDict(extra="forbid")
     approved: StrictBool
     reason: str
-    same_event: StrictBool
+    coherent_scope: StrictBool
     all_claims_supported: StrictBool
     complete_5w: StrictBool
     locally_relevant: StrictBool
@@ -164,7 +170,7 @@ class Review(BaseModel):
     attribution_correct: StrictBool
     no_conflicts: StrictBool
     not_duplicate: StrictBool
-    coverage: dict[str, Evidence]
+    coverage: dict[str, Evidence | None]
     facts: list[Evidence]
 
 
@@ -204,7 +210,7 @@ def validate_review(review: Review, sources: list[Source], policy: QualityPolicy
     errors = []
     for field in (
         "approved",
-        "same_event",
+        "coherent_scope",
         "all_claims_supported",
         "complete_5w",
         "locally_relevant",
@@ -216,20 +222,77 @@ def validate_review(review: Review, sources: list[Source], policy: QualityPolicy
     ):
         if getattr(review, field) is not True:
             errors.append(field)
-    if set(review.coverage) != {"who", "what", "where", "when", "why", "local_relevance"}:
+    if set(review.coverage) != {"who", "what", "where", "when", "why", "local_relevance"} or any(
+        e is None for e in review.coverage.values()
+    ):
         errors.append("missing_5w_evidence")
     if len({e.answer.casefold().strip() for e in review.facts}) < policy.min_facts:
         errors.append("too_few_distinct_facts")
     if len({e.quote.casefold().strip() for e in review.facts}) < policy.min_facts:
         errors.append("repeated_fact_evidence")
-    evidence = list(review.coverage.values()) + review.facts
+    evidence = [e for e in review.coverage.values() if e is not None] + review.facts
     for e in evidence:
         if (
             e.source_index >= len(sources)
-            or plain_text(e.quote).casefold() not in sources[e.source_index].text.casefold()
+            or plain_text(e.quote).casefold()
+            not in plain_text(sources[e.source_index].text).casefold()
         ):
             errors.append("unverified_evidence")
             break
     if set(e.source_index for e in evidence) != set(range(len(sources))):
         errors.append("unused_source")
     return errors
+
+
+def review_schema(sources):
+    """Constrain evidence to actual source sentences, not model-written quotes."""
+    schema = Review.model_json_schema()
+    keys = ["who", "what", "where", "when", "why", "local_relevance"]
+    schema["properties"]["coverage"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": keys,
+        "properties": {
+            key: {"anyOf": [{"$ref": "#/$defs/Evidence"}, {"type": "null"}]} for key in keys
+        },
+    }
+    quotes = sorted(
+        {
+            sentence.strip()
+            for source in sources
+            for sentence in re.split(r"(?<=[.!?])\s+", plain_text(source.text))
+            if len(sentence.strip()) >= 15
+        }
+    )
+    if not quotes:
+        raise ValueError("No source passages available for review")
+    evidence = schema["$defs"]["Evidence"]["properties"]
+    evidence["quote"] = {"type": "string", "enum": quotes}
+    evidence["source_index"] = {"type": "integer", "enum": list(range(len(sources)))}
+    # Local Pydantic validation retains the answer-length constraint.
+    evidence["answer"] = {"type": "string"}
+    return schema
+
+
+def validate_proposed_groups(proposals, sources, policy):
+    """A planner can nominate sources, never waive the article/review gates."""
+    groups = []
+    used = set()
+    if not isinstance(proposals, list):
+        return groups
+    for indexes in proposals:
+        if not isinstance(indexes, list) or not 2 <= len(indexes) <= policy.max_sources_per_article:
+            continue
+        if any(type(i) is not int or i < 0 or i >= len(sources) for i in indexes):
+            continue
+        if len(set(indexes)) != len(indexes) or used.intersection(indexes):
+            continue
+        group = [sources[i] for i in indexes]
+        dates = [datetime.fromisoformat(s.published).timestamp() for s in group]
+        if max(dates) - min(dates) > 72 * 3600:
+            continue
+        if len(words(unique_source_text(group))) < policy.min_source_words:
+            continue
+        used.update(indexes)
+        groups.append(group)
+    return groups

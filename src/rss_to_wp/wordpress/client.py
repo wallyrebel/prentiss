@@ -12,7 +12,7 @@ import pendulum
 import requests
 from bs4 import BeautifulSoup
 
-from rss_to_wp.editorial import canonical_source_url
+from rss_to_wp.editorial import canonical_source_url, plain_text
 from rss_to_wp.utils import get_logger
 from rss_to_wp.wordpress.media import wp_upload_media
 
@@ -184,6 +184,55 @@ class WordPressClient:
             if page >= int(response.headers.get("X-WP-TotalPages", 1)):
                 return stories
         raise RuntimeError("Recent story lookup exceeded limit")
+
+    def verify_post(self, post_id, expected_status, expected_content, source_urls):
+        """Read back delivery; published articles must also be publicly readable."""
+        self._rate_limit()
+        # An authenticated creation response alone does not establish public visibility.
+        get = requests.get if expected_status == "publish" else self.session.get
+        response = get(
+            self._api_url(f"posts/{post_id}"),
+            params={"_fields": "id,status,link,content"},
+            timeout=(10, 30),
+        )
+        response.raise_for_status()
+        post = response.json()
+        if (
+            post.get("id") != post_id
+            or post.get("status") != expected_status
+            or not post.get("link")
+        ):
+            raise RuntimeError("WordPress did not confirm the requested post status")
+        body = post.get("content", {}).get("rendered", "")
+
+        # WordPress texturize converts straight quotes/dashes without changing
+        # the approved words. Tolerate typography, never missing article text.
+        def rendered_text(html):
+            text = plain_text(html).translate(
+                str.maketrans(
+                    {
+                        "\u2018": "'",
+                        "\u2019": "'",
+                        "\u201c": '"',
+                        "\u201d": '"',
+                        "\u2013": "-",
+                        "\u2014": "-",
+                    }
+                )
+            )
+            return re.sub(r"-{2,}", "-", text)
+
+        if rendered_text(expected_content) not in rendered_text(body):
+            raise RuntimeError("WordPress read-back content differs from the approved article")
+        links = set()
+        for link in BeautifulSoup(body, "html.parser").find_all("a", href=True):
+            try:
+                links.add(canonical_source_url(link["href"]))
+            except ValueError:
+                continue
+        if not {canonical_source_url(url) for url in source_urls} <= links:
+            raise RuntimeError("WordPress read-back is missing source attribution")
+        return post
 
     def get_or_create_category(self, name: str) -> Optional[int]:
         """Get category ID, creating it if it doesn't exist.

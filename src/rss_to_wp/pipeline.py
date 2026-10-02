@@ -13,7 +13,6 @@ from rss_to_wp.editorial import (
     LOCAL_TERMS,
     Source,
     assessment_key,
-    candidate_groups,
     canonical_source_url,
     plain_text,
     unique_source_text,
@@ -27,6 +26,7 @@ from rss_to_wp.feeds import (
     pick_entries,
 )
 from rss_to_wp.feeds.filter import parse_entry_date
+from rss_to_wp.feeds.official import parse_official_news
 from rss_to_wp.images import download_image, find_fallback_image, find_rss_image
 
 
@@ -35,7 +35,18 @@ def collect_sources(
 ) -> list[Source]:
     by_url = {}
     for feed_config in config.feeds:
-        feed = parse_feed(feed_config.url)
+        source_hours = feed_config.max_age_hours or hours
+        try:
+            feed = (
+                parse_official_news(feed_config.url, source_hours)
+                if feed_config.source_type == "ms_sos_news"
+                else parse_feed(feed_config.url)
+            )
+        except Exception as exc:
+            report.append(
+                {"status": "error", "feed": feed_config.name, "reason": type(exc).__name__}
+            )
+            continue
         if feed is None:
             report.append(
                 {"status": "error", "feed": feed_config.name, "reason": "feed_fetch_failed"}
@@ -46,7 +57,7 @@ def collect_sources(
         entries = pick_entries(
             feed.entries,
             max_count=len(feed.entries),
-            hours_window=hours,
+            hours_window=source_hours,
             timezone=settings.timezone,
         )
         for entry in entries:
@@ -149,9 +160,25 @@ def run_pipeline(
     per_feed = Counter()
     attempts = 0
     try:
-        recent_stories = wp.recent_stories(hours) if wp else []
+        recent_hours = max([hours] + [f.max_age_hours or hours for f in config.feeds])
+        recent_stories = wp.recent_stories(recent_hours) if wp else []
         sources = collect_sources(config, settings, store, hours, report)
-        for group in candidate_groups(sources, config.quality):
+        # Remove existing sources individually BEFORE grouping so one old source
+        # cannot prevent new complementary sources from being reconsidered.
+        if wp:
+            fresh = []
+            for source in sources:
+                if wp.check_duplicate_by_source_url(source.url):
+                    report.append({"status": "duplicate", "url": source.url})
+                else:
+                    fresh.append(source)
+            sources = fresh
+        groups = (
+            rewriter.group_sources(sources, config.quality)
+            if len(sources) > 1
+            else [[s] for s in sources]
+        )
+        for group in groups:
             record = {
                 "urls": [s.url for s in group],
                 "source_words": len(words(unique_source_text(group))),
@@ -178,18 +205,21 @@ def run_pipeline(
             try:
                 # Check WordPress before model/image spending. Errors are not
                 # interpreted as permission to publish. Dry runs perform no WP IO.
-                if wp and any(wp.check_duplicate_by_source_url(s.url) for s in group):
-                    report.append({**record, "status": "duplicate"})
-                    # Do not mark every source of a mixed group as published.
-                    # Sources will be individually recognized by WP next run.
-                    continue
                 attempts += 1
                 article = rewriter.rewrite_sources(
                     group, config.quality, recent_stories=recent_stories
                 )
                 if article.get("skip"):
                     reason = article.get("reason", "editorial_rejection")
-                    report.append({**record, "status": "skipped", "reason": reason})
+                    report.append(
+                        {
+                            **record,
+                            "status": "skipped",
+                            "reason": reason,
+                            "article_words": article.get("article_words"),
+                            "review": article.get("review"),
+                        }
+                    )
                     if not dry_run:
                         store.reject(key, reason)
                     continue
@@ -204,6 +234,12 @@ def run_pipeline(
                         continue
                     if not isinstance(post.get("id"), int) or post["id"] <= 0:
                         raise RuntimeError("WordPress returned no valid post ID")
+                    wp.verify_post(
+                        post["id"],
+                        expected_status=settings.wordpress_post_status,
+                        expected_content=article["body"],
+                        source_urls=[s.url for s in group],
+                    )
                     for source in group:
                         store.mark_processed(
                             source.key,
@@ -224,6 +260,7 @@ def run_pipeline(
                         **record,
                         "status": "would_publish" if dry_run else settings.wordpress_post_status,
                         "headline": article["headline"],
+                        "body": article["body"],
                         "article_words": len(words(article["body"])),
                         "post_id": post["id"],
                         "url": post.get("link"),

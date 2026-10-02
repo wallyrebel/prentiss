@@ -6,28 +6,42 @@ ranking target or a reason to expand thin source material.
 
 ## Editorial policy
 
-1. Collect all dated sources from the last 72 hours. Skip future/undated items and
+1. Collect dated RSS sources from the last 72 hours. The official Mississippi
+   Secretary of State newsroom uses a seven-day window for public-service releases.
+   Skip future/undated items and
    previously published source URLs. Prefer local, substantive sources.
-2. Propose combinations of up to three short sources with substantial shared
-   vocabulary and dates within 24 hours. The separate editor must confirm that all
-   describe the same event, actors, place and time. A heuristic match alone cannot publish.
+2. Propose combinations of up to four sources of up to 300 words each. In addition to lexical matches,
+   one bounded planning call finds complementary reports or a useful roundup on one
+   local topic, within 72 hours. A roundup must label separate events in descriptive
+   sections and preserve each one's who/what/where/when/why. Random news bundles,
+   merged crime incidents and repeated notices fail the independent editorial review.
 3. Require at least 180 source words after removing repeated sentences. Images,
    video links and repeated/syndicated text do not count as additional reporting.
 4. Write 250–900 words **only if supported**; limit expansion to 1.6 times source
-   length. Otherwise skip. No filler, invented dates, inferred motives or promotional copy.
+   length. A draft that misses length or formatting gets one bounded revision using
+   the same evidence. Otherwise skip. No filler, invented dates, inferred motives or promotional copy.
 5. A separate review call checks every claim in the headline, excerpt and article,
    who/what/where/when/why, local relevance, attribution, useful details, duplication,
    and contradictions. Require six distinct facts and verbatim evidence found in the
-   supplied source text. Missing/malformed/truncated responses fail closed.
+   supplied source text. A mechanical coverage/quote error may be rechecked once;
+   an editor's factual, relevance or duplicate rejection is never overruled.
+   Reviews use strict structured output with every coverage field required and
+   quotes selected from actual source passages. Missing evidence is a rejection.
+   Invisible feed formatting and HTML boundary spacing are normalized before matching.
+   Missing/malformed/truncated responses fail closed.
 6. Compare against recent WordPress headlines and excerpts to avoid competing
    articles about the same event. Updates to existing articles require editorial work.
 7. Only then resolve categories, upload an available source image, and publish.
    Stock fallback is disabled. Each contributing source receives a named link;
    an AI-assistance disclosure and corrections link are appended after word checks.
+   Read the post back and verify status, approved text and all source links before
+   recording success. Published posts must be readable without authentication.
 
 These automated checks reduce risk but do not establish factual truth. Periodically
 review accepted and rejected examples. Do not lower the thresholds just to fill a quota.
-Sources are the supplied RSS text; the system does not read text inside images,
+Sources are supplied RSS text plus full releases from the explicitly configured
+Secretary of State newsroom. That adapter reads only dated releases on sos.ms.gov;
+external interview links and page navigation are excluded. The system does not read text inside images,
 watch videos, bypass login walls, or silently fetch arbitrary linked pages.
 
 ## Run locally
@@ -72,7 +86,8 @@ Model selection uses repository **variables** `OPENAI_MODEL` and
 previous nano model. API and WordPress credentials remain Actions secrets.
 
 The `editorial-decisions` artifact records counts, source URLs, rejection reasons,
-and evidence for accepted stories. Errors fail the job even after partial success.
+and the full proposed article and evidence for accepted stories, so successful
+writing can be inspected rather than inferred from a green job. Errors fail the job even after partial success.
 Valid empty feeds and editorial rejections are successful outcomes.
 
 Dry-run calls the writing/review APIs but performs no WordPress requests or content

@@ -7,6 +7,13 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Mississippi Secretary of State
+  url: https://www.sos.ms.gov/news
+  source_type: ms_sos_news
+  max_age_hours: 168
+  default_category: Local News
+  source_name: Mississippi Secretary of State
+  max_per_run: 1
 - name: Local Feed 1
   url: https://fetchrss.com/feed/1vcaujD2G3c21vfoORA4wG0o.rss
   default_category: Local News
@@ -87,4 +94,4 @@ quality:
   max_expansion_ratio: 1.6
   max_posts_per_run: 3
   max_reviews_per_run: 12
-  max_sources_per_article: 3
+  max_sources_per_article: 4
