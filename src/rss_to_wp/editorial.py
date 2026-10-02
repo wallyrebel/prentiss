@@ -271,6 +271,14 @@ def review_schema(sources):
     evidence["source_index"] = {"type": "integer", "enum": list(range(len(sources)))}
     # Local Pydantic validation retains the answer-length constraint.
     evidence["answer"] = {"type": "string"}
+    # Structured output follows schema order: inspect evidence and explain
+    # discrepancies before committing to an approval verdict.
+    fields = schema["properties"]
+    ordered = ["facts", "coverage", "reason"]
+    schema["properties"] = {
+        key: fields[key] for key in ordered + [key for key in fields if key not in ordered]
+    }
+    schema["required"] = list(schema["properties"])
     return schema
 
 
