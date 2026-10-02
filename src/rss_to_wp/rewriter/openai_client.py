@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import structlog
 from openai import OpenAI
 
 from rss_to_wp.config import QualityPolicy
@@ -43,6 +44,9 @@ Do not list audience towns or add local place names absent from the evidence.
 Preserve exact qualifiers: 'can' or 'may' is not 'will'; a Saturday schedule is not
 the whole voting period; a necessary condition is not a guarantee. Do not infer
 public enthusiasm from counts or write 'officials urge' without such a statement.
+When a calendar names a specialized service, preserve its full label. For example,
+'Saturday In-Person Absentee Voting Begins' means Saturday service begins, NOT
+'In-person absentee voting begins Saturday'. Check nearby prose for existing service.
 Remove interpretive filler such as 'these figures highlight active engagement'.
 Answer who, what, where, when, and why (supported purpose, cause or public impact).
 The feed timestamp is publication time, NOT proof of event time. Resolve 'today'
@@ -76,6 +80,14 @@ filler, repeated facts, or missing essential information. A link to a video/imag
 not evidence of its unseen contents. Do not approve an article just because it is long.
 Check modal verbs, eligibility and schedule qualifiers precisely. Do not accept
 inferred enthusiasm, invented calls to action, or a change from 'can' to 'will'.
+Scope test: a calendar entry 'Saturday In-Person Absentee Voting Begins' does NOT
+support 'In-person absentee voting begins Saturday'. In the source, Saturday
+modifies the TYPE OF SERVICE; in the latter claim it only modifies the start date.
+This removes a material restriction. Reject it, even if every date matches and
+another paragraph says ballots are already available. This is an unsupported claim,
+not a harmless paraphrase. Apply this scope check to all limited services and groups.
+Build evidence first. In reason, explicitly discuss any lost scope, conflicting
+availability, eligibility or modal qualifiers before setting the final booleans.
 Require who, what, where, when and why, supported in sources AND covered in the article.
 'Why' may be a documented purpose or public consequence; never invent a motive.
 'When' must establish event timing; source publication time alone is insufficient.
@@ -92,6 +104,8 @@ Require at least the requested number of DISTINCT substantive facts; splitting o
 fact into fragments does not count. Supply coverage keys who, what, where, when, why,
 local_relevance. Each coverage item and fact is {"answer":"supported fact",
 "quote":"verbatim contiguous evidence from source TEXT", "source_index":0}.
+Audit all claims, but return only min_facts distinct evidence items, six coverage
+answers and a concise reason. Do not enumerate every supported claim in the output.
 Use zero-based source indexes. Quotes must be found verbatim in text, not metadata.
 Select the provided source passage from the schema's quote choices. Never quote
 the proposed article. A null coverage value means evidence is absent and requires
@@ -109,8 +123,8 @@ class OpenAIRewriter:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4.1-mini",
-        max_tokens: int = 6000,
+        model: str = "gpt-5.4-mini",
+        max_tokens: int = 8000,
         review_model: str | None = None,
     ):
         self.client = OpenAI(api_key=api_key, timeout=90, max_retries=2)
@@ -119,6 +133,11 @@ class OpenAIRewriter:
         self.max_tokens = max_tokens
 
     def _json(self, system: str, payload: dict, model: str) -> dict:
+        # Bound reasoning cost for the selected model without sending an
+        # unsupported reasoning parameter to older model overrides.
+        options = {}
+        if model.startswith(("gpt-5.4-mini", "gpt-5.6-")):
+            options["reasoning_effort"] = "medium" if "schema" in payload else "low"
         response = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -126,6 +145,7 @@ class OpenAIRewriter:
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             max_completion_tokens=self.max_tokens,
+            **options,
             response_format=(
                 {
                     "type": "json_schema",
@@ -139,6 +159,15 @@ class OpenAIRewriter:
                 else {"type": "json_object"}
             ),
         )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            structlog.get_logger(__name__).info(
+                "editorial_api_usage",
+                model=model,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+            )
         choice = response.choices[0]
         if choice.finish_reason != "stop" or getattr(choice.message, "refusal", None):
             raise ValueError("Incomplete or refused editorial response")
