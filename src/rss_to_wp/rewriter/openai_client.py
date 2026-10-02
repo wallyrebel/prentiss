@@ -110,7 +110,7 @@ class OpenAIRewriter:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-5.6-luna",
+        model: str = "gpt-5.4-mini",
         max_tokens: int = 6000,
         review_model: str | None = None,
     ):
@@ -122,7 +122,9 @@ class OpenAIRewriter:
     def _json(self, system: str, payload: dict, model: str) -> dict:
         # Bound reasoning cost for the selected model without sending an
         # unsupported reasoning parameter to older model overrides.
-        options = {"reasoning_effort": "low"} if model.startswith("gpt-5.6-") else {}
+        options = {}
+        if model.startswith(("gpt-5.4-mini", "gpt-5.6-")):
+            options["reasoning_effort"] = "medium" if "schema" in payload else "low"
         response = self.client.chat.completions.create(
             model=model,
             messages=[

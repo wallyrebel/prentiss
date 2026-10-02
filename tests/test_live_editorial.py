@@ -1,11 +1,13 @@
 """Opt-in model checks. Synthetic examples are reviewed, never sent to WordPress."""
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 
 from rss_to_wp.config import FeedConfig, QualityPolicy
-from rss_to_wp.editorial import Review, Source, review_schema, validate_review
+from rss_to_wp.editorial import Review, Source, plain_text, review_schema, validate_review
 from rss_to_wp.rewriter.openai_client import REVIEW_PROMPT, OpenAIRewriter
 
 pytestmark = pytest.mark.skipif(
@@ -41,7 +43,7 @@ def test_live_reviewer_preserves_schedule_qualifiers(incorrect_schedule):
             "Telephone registration is already available on weekdays. Saturday registration calls will be accepted on October 3 from 9 a.m. to noon. The Saturday service adds an option without changing weekday registration availability.",
             "Telephone registration begins on Saturday, October 3, from 9 a.m. to noon. Registration is not available before that Saturday opening. Families must wait until October 3 to call the library and register for the workshop.",
         )
-    model = os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.6-luna")
+    model = os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.4-mini")
     writer = OpenAIRewriter(os.environ["OPENAI_API_KEY"], model=model, review_model=model)
     data = writer._json(
         REVIEW_PROMPT,
@@ -64,3 +66,45 @@ def test_live_reviewer_preserves_schedule_qualifiers(incorrect_schedule):
         assert not review.approved and not review.all_claims_supported, review.reason
     else:
         assert not validate_review(review, [source], QualityPolicy()), review.reason
+
+
+@pytest.mark.parametrize("incorrect_schedule", [False, True])
+def test_live_reviewer_catches_real_schedule_error(incorrect_schedule):
+    """Archived public releases and the actual missed qualifier, never publishing input."""
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures/election_schedule.json").read_text(encoding="utf-8")
+    )
+    sources = [
+        Source(
+            {},
+            FeedConfig(name="Archived official release", url=item["url"]),
+            item["url"],
+            item["url"],
+            item["title"],
+            plain_text(item["text"]),
+            item["date"],
+            "Mississippi Secretary of State",
+        )
+        for item in fixture["sources"]
+    ]
+    model = os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.4-mini")
+    writer = OpenAIRewriter(os.environ["OPENAI_API_KEY"], model=model, review_model=model)
+    data = writer._json(
+        REVIEW_PROMPT,
+        {
+            "audience": QualityPolicy().audience,
+            "min_facts": 6,
+            "sources": [source.payload() for source in sources],
+            "schema": review_schema(sources),
+            "recent_stories": [],
+            "article": fixture[
+                "unsupported_article" if incorrect_schedule else "supported_article"
+            ],
+        },
+        model,
+    )
+    review = Review.model_validate(data)
+    if incorrect_schedule:
+        assert not review.approved and not review.all_claims_supported, review.reason
+    else:
+        assert not validate_review(review, sources, QualityPolicy()), review.reason
