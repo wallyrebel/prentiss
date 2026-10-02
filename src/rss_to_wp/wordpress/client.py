@@ -204,7 +204,25 @@ class WordPressClient:
         ):
             raise RuntimeError("WordPress did not confirm the requested post status")
         body = post.get("content", {}).get("rendered", "")
-        if plain_text(expected_content) not in plain_text(body):
+
+        # WordPress texturize converts straight quotes/dashes without changing
+        # the approved words. Tolerate typography, never missing article text.
+        def rendered_text(html):
+            text = plain_text(html).translate(
+                str.maketrans(
+                    {
+                        "\u2018": "'",
+                        "\u2019": "'",
+                        "\u201c": '"',
+                        "\u201d": '"',
+                        "\u2013": "-",
+                        "\u2014": "-",
+                    }
+                )
+            )
+            return re.sub(r"-{2,}", "-", text)
+
+        if rendered_text(expected_content) not in rendered_text(body):
             raise RuntimeError("WordPress read-back content differs from the approved article")
         links = set()
         for link in BeautifulSoup(body, "html.parser").find_all("a", href=True):

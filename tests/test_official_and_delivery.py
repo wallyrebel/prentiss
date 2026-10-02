@@ -83,3 +83,20 @@ def test_publish_readback_is_public_and_checks_status_content_and_sources(
         with pytest.raises(RuntimeError):
             wp.verify_post(99, "publish", "<p>Approved body.</p>", ["https://example.org/source"])
     assert "auth" not in get.call_args.kwargs
+
+
+def test_readback_allows_wordpress_smart_punctuation(monkeypatch):
+    wp = WordPressClient("https://example.org", "test", "test")
+    response = Mock()
+    response.json.return_value = {
+        "id": 99,
+        "status": "publish",
+        "link": "https://example.org/article",
+        "content": {
+            "rendered": '<p>The clerk\u2019s notice says \u201cMonday.\u201d</p><a href="https://example.org/source">Source</a>'
+        },
+    }
+    monkeypatch.setattr("rss_to_wp.wordpress.client.requests.get", Mock(return_value=response))
+    wp.verify_post(
+        99, "publish", '<p>The clerk\'s notice says "Monday."</p>', ["https://example.org/source"]
+    )
