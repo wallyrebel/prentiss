@@ -107,3 +107,20 @@ def test_replay_reports_error_without_retry_or_publishing():
     assert result["status"] == "error"
     assert result["diagnostics"]["finish_reason"] == "length"
     assert writer.rewrite_sources.call_count == 1
+
+
+def test_saved_review_replay_repeats_review_without_rewriting():
+    writer = writer_response("truncated response", "length")
+    writer.rewrite_sources = Mock(side_effect=AssertionError("Rewriting forbidden"))
+    snapshot = json.loads(Path("tests/fixtures/oct3_editorial_replay.json").read_text())
+    article = {"headline": "Public draft", "body": "<p>Source facts.</p>"}
+    snapshot["review_request"] = {"article": article}
+    result = replay(snapshot, writer)
+    assert result["status"] == "error"
+    assert result["diagnostics"]["stage"] == "review"
+    assert result["diagnostics"]["finish_reason"] == "length"
+    assert not writer.rewrite_sources.called
+    args = writer.client.chat.completions.create.call_args.kwargs
+    assert json.loads(args["messages"][1]["content"])["article"] == article
+    assert args["max_completion_tokens"] == 8000
+    assert writer.client.chat.completions.create.call_count == 1
