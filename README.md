@@ -102,6 +102,17 @@ and the full proposed article and evidence for accepted stories, so successful
 writing can be inspected rather than inferred from a green job. Errors fail the job even after partial success.
 Valid empty feeds and editorial rejections are successful outcomes.
 
+Editorial response failures include fixed diagnostic codes, call stage,
+finish reason, refusal flag and token counts, without raw API exception messages
+or response bodies. Failed candidate groups retain public source snapshots and
+policy settings for a bounded replay. The manual `Editorial diagnostic replay`
+workflow reviews the four-source group from October 3 run 37110316545 using the
+unchanged configured models and 8,000-token cap. It has no WordPress credentials
+or publication/state writes. That historical response and draft were not saved;
+the fixture uses currently retained RSS text matched by the exact source URLs.
+For another saved group, use `python -m rss_to_wp.replay --snapshot snapshot.json`
+with its `replay` object. This incurs model usage and never publishes.
+
 Dry-run calls the writing/review APIs but performs no WordPress requests or content
 uploads and never records published/rejected entries. Thus its output is a quality
 preview, **not** a prediction of new publication: Actions dry runs start with a

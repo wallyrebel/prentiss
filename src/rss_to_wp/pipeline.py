@@ -28,6 +28,15 @@ from rss_to_wp.feeds import (
 from rss_to_wp.feeds.filter import parse_entry_date
 from rss_to_wp.feeds.official import parse_official_news
 from rss_to_wp.images import download_image, find_fallback_image, find_rss_image
+from rss_to_wp.rewriter.openai_client import EditorialResponseError
+
+
+def error_details(exc):
+    """Keep raw exception messages and response bodies out of run artifacts."""
+    result = {"reason": type(exc).__name__}
+    if isinstance(exc, EditorialResponseError):
+        result["diagnostics"] = exc.diagnostics
+    return result
 
 
 def collect_sources(
@@ -44,12 +53,20 @@ def collect_sources(
             )
         except Exception as exc:
             report.append(
-                {"status": "error", "feed": feed_config.name, "reason": type(exc).__name__}
+                {
+                    "status": "error",
+                    "feed": feed_config.name,
+                    "reason": type(exc).__name__,
+                }
             )
             continue
         if feed is None:
             report.append(
-                {"status": "error", "feed": feed_config.name, "reason": "feed_fetch_failed"}
+                {
+                    "status": "error",
+                    "feed": feed_config.name,
+                    "reason": "feed_fetch_failed",
+                }
             )
             continue
         # A valid empty feed is not an operational failure. Consider ALL fresh
@@ -90,12 +107,20 @@ def collect_sources(
                     by_url[url] = source
             except (ValueError, TypeError) as exc:
                 report.append(
-                    {"status": "error", "feed": feed_config.name, "reason": type(exc).__name__}
+                    {
+                        "status": "error",
+                        "feed": feed_config.name,
+                        "reason": type(exc).__name__,
+                    }
                 )
     # Prioritize a local connection and substantive source material.
     return sorted(
         by_url.values(),
-        key=lambda s: (bool(LOCAL_TERMS.search(s.text)), len(words(s.text)), s.published),
+        key=lambda s: (
+            bool(LOCAL_TERMS.search(s.text)),
+            len(words(s.text)),
+            s.published,
+        ),
         reverse=True,
     )
 
@@ -128,9 +153,9 @@ def publish_article(article, sources, config, settings, wp):
             image_result = download_image(fallback["url"])
             if image_result:
                 # Visible caption avoids suggesting stock depicts the actual event.
-                article["body"] += (
-                    "<p><em>Featured image is an illustrative stock photograph.</em></p>"
-                )
+                article[
+                    "body"
+                ] += "<p><em>Featured image is an illustrative stock photograph.</em></p>"
     if image_result:
         image_bytes, filename, _ = image_result
         media_id = wp.upload_media(image_bytes, filename, alt_text="")
@@ -184,11 +209,17 @@ def run_pipeline(
                 "source_words": len(words(unique_source_text(group))),
             }
             key = assessment_key(
-                group, config.quality, settings.openai_model + settings.openai_review_model
+                group,
+                config.quality,
+                settings.openai_model + settings.openai_review_model,
             )
             if record["source_words"] < config.quality.min_source_words:
                 report.append(
-                    {**record, "status": "skipped", "reason": "insufficient_source_words"}
+                    {
+                        **record,
+                        "status": "skipped",
+                        "reason": "insufficient_source_words",
+                    }
                 )
                 continue
             cached = store.rejection_reason(key)
@@ -251,14 +282,18 @@ def run_pipeline(
                         )
                 published.append(post)
                 recent_stories.append(
-                    {"id": post["id"], "title": article["headline"], "excerpt": article["excerpt"]}
+                    {
+                        "id": post["id"],
+                        "title": article["headline"],
+                        "excerpt": article["excerpt"],
+                    }
                 )
                 for name in {s.feed.name for s in group}:
                     per_feed[name] += 1
                 report.append(
                     {
                         **record,
-                        "status": "would_publish" if dry_run else settings.wordpress_post_status,
+                        "status": ("would_publish" if dry_run else settings.wordpress_post_status),
                         "headline": article["headline"],
                         "body": article["body"],
                         "article_words": len(words(article["body"])),
@@ -269,12 +304,23 @@ def run_pipeline(
                 )
             except Exception as exc:
                 # Avoid serializing API exceptions, which can expose auth data.
-                report.append({**record, "status": "error", "reason": type(exc).__name__})
+                report.append(
+                    {
+                        **record,
+                        "status": "error",
+                        **error_details(exc),
+                        "replay": {
+                            "sources": [s.payload() for s in group],
+                            "policy": config.quality.model_dump(),
+                            "recent_stories": recent_stories,
+                        },
+                    }
+                )
     except Exception as exc:
         report.append(
             {
                 "status": "error",
-                "reason": type(exc).__name__,
+                **error_details(exc),
                 "stage": "collect_or_wordpress_preflight",
             }
         )

@@ -6,6 +6,7 @@ import json
 
 import structlog
 from openai import OpenAI
+from pydantic import ValidationError
 
 from rss_to_wp.config import QualityPolicy
 from rss_to_wp.editorial import (
@@ -119,6 +120,14 @@ event. An editor should update the existing article instead of making competing 
 """
 
 
+class EditorialResponseError(ValueError):
+    """Fixed error codes and allowlisted metadata; never raw API/model errors."""
+
+    def __init__(self, code: str, stage: str, **details):
+        super().__init__(code)
+        self.diagnostics = {"code": code, "stage": stage, **details}
+
+
 class OpenAIRewriter:
     def __init__(
         self,
@@ -133,12 +142,26 @@ class OpenAIRewriter:
         self.max_tokens = max_tokens
 
     def _json(self, system: str, payload: dict, model: str) -> dict:
+        stage = (
+            "review_revision"
+            if "previous_review" in payload
+            else (
+                "review"
+                if "schema" in payload
+                else (
+                    "writer_revision"
+                    if "previous_draft" in payload
+                    else "grouping" if system == GROUP_PROMPT else "writer"
+                )
+            )
+        )
         # Bound reasoning cost for the selected model without sending an
         # unsupported reasoning parameter to older model overrides.
         options = {}
         if model.startswith(("gpt-5.4-mini", "gpt-5.6-")):
             options["reasoning_effort"] = "medium" if "schema" in payload else "low"
-        response = self.client.chat.completions.create(
+        response = self._request(
+            stage,
             model=model,
             messages=[
                 {"role": "system", "content": system},
@@ -168,16 +191,72 @@ class OpenAIRewriter:
                 completion_tokens=usage.completion_tokens,
                 total_tokens=usage.total_tokens,
             )
+        if not response.choices:
+            raise EditorialResponseError("missing_choice", stage)
         choice = response.choices[0]
-        if choice.finish_reason != "stop" or getattr(choice.message, "refusal", None):
-            raise ValueError("Incomplete or refused editorial response")
-        data = json.loads(choice.message.content or "")
+        content = choice.message.content or ""
+        finish = choice.finish_reason
+        details = {
+            "finish_reason": (
+                finish
+                if finish in {"stop", "length", "content_filter", "tool_calls", "function_call"}
+                else "unknown"
+            ),
+            "refused": bool(getattr(choice.message, "refusal", None)),
+            "content_chars": len(content),
+            "token_limit": self.max_tokens,
+        }
+        if usage is not None:
+            for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = getattr(usage, name, None)
+                if isinstance(value, int):
+                    details[name] = value
+            reasoning = getattr(
+                getattr(usage, "completion_tokens_details", None),
+                "reasoning_tokens",
+                None,
+            )
+            if isinstance(reasoning, int):
+                details["reasoning_tokens"] = reasoning
+        if details["refused"] or finish != "stop":
+            raise EditorialResponseError(
+                "refused_response" if details["refused"] else "incomplete_response",
+                stage,
+                **details,
+            )
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise EditorialResponseError("invalid_json", stage, **details) from exc
         if not isinstance(data, dict):
-            raise ValueError("Editorial response must be a JSON object")
+            raise EditorialResponseError("non_object_response", stage, **details)
         return data
 
+    def _request(self, stage, **kwargs):
+        try:
+            return self.client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            details = {"error_type": type(exc).__name__}
+            status = getattr(exc, "status_code", None)
+            if isinstance(status, int):
+                details["http_status"] = status
+            raise EditorialResponseError("api_request_failed", stage, **details) from exc
+
+    @staticmethod
+    def _review(data, stage="review"):
+        try:
+            return Review.model_validate(data)
+        except ValidationError as exc:
+            # Pydantic's messages include input values; keep only the count.
+            raise EditorialResponseError(
+                "invalid_review_schema", stage, validation_error_count=exc.error_count()
+            ) from exc
+
     def rewrite_sources(
-        self, sources: list[Source], policy: QualityPolicy, recent_stories: list[dict] | None = None
+        self,
+        sources: list[Source],
+        policy: QualityPolicy,
+        recent_stories: list[dict] | None = None,
     ) -> dict:
         source_words = len(words(unique_source_text(sources)))
         payload = {
@@ -197,7 +276,7 @@ class OpenAIRewriter:
                     "reason": str(article.get("reason", "insufficient_evidence"))[:500],
                 }
             if article.get("decision") != "publish":
-                raise ValueError("Missing editorial decision")
+                raise EditorialResponseError("missing_editorial_decision", "writer")
             errors = validate_article(article, sources, policy)
             if not errors:
                 break
@@ -234,7 +313,7 @@ class OpenAIRewriter:
             },
             self.review_model,
         )
-        review = Review.model_validate(review_data)
+        review = self._review(review_data)
         errors = validate_review(review, sources, policy)
         # Correct an evidence-format error once, but never overrule an editor's
         # factual, relevance, completeness or duplication rejection.
@@ -252,7 +331,7 @@ class OpenAIRewriter:
                 },
                 self.review_model,
             )
-            review = Review.model_validate(review_data)
+            review = self._review(review_data, "review_revision")
             errors = validate_review(review, sources, policy)
         if errors:
             return {

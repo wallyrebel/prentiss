@@ -374,7 +374,7 @@ def test_malformed_json_cannot_publish():
             finish_reason="stop", message=SimpleNamespace(content='prefix {"headline":"story"}')
         )
     ]
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(ValueError, match="invalid_json"):
         writer._json("prompt", {}, writer.model)
 
 
