@@ -80,6 +80,7 @@ def replay(snapshot: dict, rewriter: OpenAIRewriter) -> dict:
                 "status": "reviewed",
                 "validation_errors": errors,
                 "review": review.model_dump(),
+                "response": rewriter.last_response_diagnostics,
             }
         result = rewriter.rewrite_sources(sources, policy, snapshot.get("recent_stories", []))
         return {
