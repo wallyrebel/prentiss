@@ -8,9 +8,17 @@ import os
 from pathlib import Path
 
 from rss_to_wp.config import FeedConfig, QualityPolicy
-from rss_to_wp.editorial import Source, canonical_source_url, unique_source_text, words
+from rss_to_wp.editorial import (
+    Source,
+    canonical_source_url,
+    unique_source_text,
+    words,
+    review_schema,
+    validate_article,
+    validate_review,
+)
 from rss_to_wp.pipeline import error_details
-from rss_to_wp.rewriter.openai_client import OpenAIRewriter
+from rss_to_wp.rewriter.openai_client import OpenAIRewriter, REVIEW_PROMPT
 
 
 def replay(snapshot: dict, rewriter: OpenAIRewriter) -> dict:
@@ -43,6 +51,36 @@ def replay(snapshot: dict, rewriter: OpenAIRewriter) -> dict:
     if record["source_words"] < policy.min_source_words:
         return {**record, "status": "skipped", "reason": "insufficient_source_words"}
     try:
+        if snapshot.get("review_request"):
+            request = snapshot["review_request"]
+            payload = {
+                "audience": policy.audience,
+                "min_words": policy.min_article_words,
+                "max_words": min(
+                    policy.max_article_words,
+                    int(record["source_words"] * policy.max_expansion_ratio),
+                ),
+                "min_facts": policy.min_facts,
+                "sources": [s.payload() for s in sources],
+                "schema": review_schema(sources),
+                "recent_stories": snapshot.get("recent_stories", []),
+                **{
+                    key: request[key]
+                    for key in ("article", "previous_review", "validation_errors", "instruction")
+                    if key in request
+                },
+            }
+            data = rewriter._json(REVIEW_PROMPT, payload, rewriter.review_model)
+            review = rewriter._review(data)
+            errors = validate_article(payload["article"], sources, policy) + validate_review(
+                review, sources, policy
+            )
+            return {
+                **record,
+                "status": "reviewed",
+                "validation_errors": errors,
+                "review": review.model_dump(),
+            }
         result = rewriter.rewrite_sources(sources, policy, snapshot.get("recent_stories", []))
         return {
             **record,

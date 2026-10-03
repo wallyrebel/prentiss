@@ -47,6 +47,15 @@ def test_truncation_retains_safe_metadata_and_fails_closed():
     assert writer.client.chat.completions.create.call_count == 1
 
 
+def test_review_error_retains_input_draft_but_not_failed_response():
+    writer = writer_response("failed response text", "length")
+    article = {"headline": "Public draft", "body": "<p>Source facts.</p>"}
+    with pytest.raises(EditorialResponseError) as caught:
+        writer._json(REVIEW_PROMPT, {"schema": {}, "article": article}, writer.review_model)
+    assert caught.value.review_request == {"article": article}
+    assert "failed response text" not in json.dumps(caught.value.review_request)
+
+
 @pytest.mark.parametrize(
     "content,code", [("not-json secret", "invalid_json"), ("[]", "non_object_response")]
 )

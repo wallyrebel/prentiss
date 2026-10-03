@@ -105,7 +105,9 @@ Valid empty feeds and editorial rejections are successful outcomes.
 Editorial response failures include fixed diagnostic codes, call stage,
 finish reason, refusal flag and token counts, without raw API exception messages
 or response bodies. Failed candidate groups retain public source snapshots and
-policy settings for a bounded replay. The manual `Editorial diagnostic replay`
+policy settings for a bounded replay. Review response failures also retain the
+input draft, so replay can repeat that exact review call instead of rewriting.
+The manual `Editorial diagnostic replay`
 workflow reviews the four-source group from October 3 run 37110316545 using the
 unchanged configured models and 8,000-token cap. It has no WordPress credentials
 or publication/state writes. That historical response and draft were not saved;

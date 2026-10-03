@@ -155,6 +155,19 @@ class OpenAIRewriter:
                 )
             )
         )
+
+        def failure(code, **details):
+            error = EditorialResponseError(code, stage, **details)
+            if "article" in payload:
+                # Keep the public draft that reached review, never the failed
+                # response body. This allows an exact review-stage replay.
+                error.review_request = {
+                    key: payload[key]
+                    for key in ("article", "previous_review", "validation_errors", "instruction")
+                    if key in payload
+                }
+            return error
+
         # Bound reasoning cost for the selected model without sending an
         # unsupported reasoning parameter to older model overrides.
         options = {}
@@ -192,7 +205,7 @@ class OpenAIRewriter:
                 total_tokens=usage.total_tokens,
             )
         if not response.choices:
-            raise EditorialResponseError("missing_choice", stage)
+            raise failure("missing_choice")
         choice = response.choices[0]
         content = choice.message.content or ""
         finish = choice.finish_reason
@@ -219,17 +232,16 @@ class OpenAIRewriter:
             if isinstance(reasoning, int):
                 details["reasoning_tokens"] = reasoning
         if details["refused"] or finish != "stop":
-            raise EditorialResponseError(
+            raise failure(
                 "refused_response" if details["refused"] else "incomplete_response",
-                stage,
                 **details,
             )
         try:
             data = json.loads(content)
         except json.JSONDecodeError as exc:
-            raise EditorialResponseError("invalid_json", stage, **details) from exc
+            raise failure("invalid_json", **details) from exc
         if not isinstance(data, dict):
-            raise EditorialResponseError("non_object_response", stage, **details)
+            raise failure("non_object_response", **details)
         return data
 
     def _request(self, stage, **kwargs):

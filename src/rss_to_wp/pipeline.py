@@ -313,6 +313,12 @@ def run_pipeline(
                             "sources": [s.payload() for s in group],
                             "policy": config.quality.model_dump(),
                             "recent_stories": recent_stories,
+                            **(
+                                {"review_request": exc.review_request}
+                                if isinstance(exc, EditorialResponseError)
+                                and hasattr(exc, "review_request")
+                                else {}
+                            ),
                         },
                     }
                 )
