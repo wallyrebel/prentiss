@@ -140,6 +140,10 @@ class OpenAIRewriter:
         self.model = model
         self.review_model = review_model or model
         self.max_tokens = max_tokens
+        # Reserve bounded JSON headroom for medium-effort review. Writing and
+        # grouping keep their original limit; a shorter explicit override also
+        # bounds reviews. There is no retry on incomplete model output.
+        self.review_max_tokens = min(max_tokens + 4000, 12000)
 
     def _json(self, system: str, payload: dict, model: str) -> dict:
         stage = (
@@ -172,10 +176,10 @@ class OpenAIRewriter:
         # unsupported reasoning parameter to older model overrides.
         options = {}
         if model.startswith(("gpt-5.4-mini", "gpt-5.6-")):
-            # A medium-effort review exhausted all 8,000 completion tokens in
-            # reasoning, leaving no JSON. Keep the same hard cost cap and all
-            # review gates, but explicitly bound reasoning to low effort.
-            options["reasoning_effort"] = "low"
+            # Low review effort missed a known factual regression in live
+            # evaluation. Preserve medium effort and bounded output headroom.
+            options["reasoning_effort"] = "medium" if "schema" in payload else "low"
+        token_limit = self.review_max_tokens if "schema" in payload else self.max_tokens
         response = self._request(
             stage,
             model=model,
@@ -183,7 +187,7 @@ class OpenAIRewriter:
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
-            max_completion_tokens=self.max_tokens,
+            max_completion_tokens=token_limit,
             **options,
             response_format=(
                 {
@@ -220,7 +224,7 @@ class OpenAIRewriter:
             ),
             "refused": bool(getattr(choice.message, "refusal", None)),
             "content_chars": len(content),
-            "token_limit": self.max_tokens,
+            "token_limit": token_limit,
             "reasoning_effort": options.get("reasoning_effort", "model_default"),
         }
         if usage is not None:

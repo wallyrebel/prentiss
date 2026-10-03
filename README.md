@@ -63,8 +63,10 @@ Required environment variables: `OPENAI_API_KEY`, `WORDPRESS_BASE_URL`,
 and GitHub Actions secrets remotely. Never commit them.
 
 `OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-5.4-mini`.
-Writing/grouping and editorial review use explicit low reasoning, with a
-8,000-token completion cap including reasoning. The two roles use separate calls.
+Writing/grouping use low reasoning with an 8,000-token completion cap including
+reasoning. Independent editorial review preserves medium reasoning with a
+12,000-token completion cap, leaving bounded room for review JSON. The roles
+use separate calls; incomplete output is never retried with a larger budget.
 API logs record token usage. As of October 2, 2026, standard pricing is $0.75/M input
 and $4.50/M output: https://developers.openai.com/api/docs/models/gpt-5.4-mini .
 For illustration, 10,000 input plus 4,000 output tokens across writing/review cost
@@ -109,8 +111,9 @@ policy settings for a bounded replay. Review response failures also retain the
 input draft, so replay can repeat that exact review call instead of rewriting.
 The manual `Editorial diagnostic replay` workflow downloads the exact retained
 review request from October 3 run 37155073138. That run proved medium reasoning
-used all 8,000 completion tokens without returning JSON. The repair uses low
-reasoning with the unchanged configured models, 8,000-token cap, review prompt
+used all 8,000 completion tokens without returning JSON. The repair preserves
+medium reasoning and increases only the review cap to 12,000 tokens, with the
+unchanged configured models, review prompt
 and factual gates; an empty/truncated response still fails closed without a
 response-budget retry. The diagnostic workflow repeats one exact review call,
 then checks four live factual/schedule evaluations. It has no WordPress
