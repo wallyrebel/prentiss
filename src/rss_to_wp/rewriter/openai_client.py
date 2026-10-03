@@ -172,7 +172,10 @@ class OpenAIRewriter:
         # unsupported reasoning parameter to older model overrides.
         options = {}
         if model.startswith(("gpt-5.4-mini", "gpt-5.6-")):
-            options["reasoning_effort"] = "medium" if "schema" in payload else "low"
+            # A medium-effort review exhausted all 8,000 completion tokens in
+            # reasoning, leaving no JSON. Keep the same hard cost cap and all
+            # review gates, but explicitly bound reasoning to low effort.
+            options["reasoning_effort"] = "low"
         response = self._request(
             stage,
             model=model,
@@ -218,6 +221,7 @@ class OpenAIRewriter:
             "refused": bool(getattr(choice.message, "refusal", None)),
             "content_chars": len(content),
             "token_limit": self.max_tokens,
+            "reasoning_effort": options.get("reasoning_effort", "model_default"),
         }
         if usage is not None:
             for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -231,6 +235,10 @@ class OpenAIRewriter:
             )
             if isinstance(reasoning, int):
                 details["reasoning_tokens"] = reasoning
+        self.last_response_diagnostics = {"stage": stage, "model": model, **details}
+        structlog.get_logger(__name__).info(
+            "editorial_api_response", **self.last_response_diagnostics
+        )
         if details["refused"] or finish != "stop":
             raise failure(
                 "refused_response" if details["refused"] else "incomplete_response",

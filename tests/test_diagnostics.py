@@ -123,4 +123,35 @@ def test_saved_review_replay_repeats_review_without_rewriting():
     args = writer.client.chat.completions.create.call_args.kwargs
     assert json.loads(args["messages"][1]["content"])["article"] == article
     assert args["max_completion_tokens"] == 8000
+    assert args["reasoning_effort"] == "low"
     assert writer.client.chat.completions.create.call_count == 1
+
+
+@pytest.mark.parametrize("previous_review", [False, True])
+def test_review_budget_preserves_models_schema_and_content(previous_review):
+    writer = writer_response()
+    payload = {
+        "schema": {"type": "object"},
+        "article": {"headline": "Original draft"},
+        "recent_stories": [{"id": 42, "title": "Original duplicate context"}],
+    }
+    if previous_review:
+        payload["previous_review"] = {"approved": False}
+    assert writer._json(REVIEW_PROMPT, payload, writer.review_model) == {}
+    args = writer.client.chat.completions.create.call_args.kwargs
+    assert args["model"] == "gpt-5.4-mini"
+    assert args["max_completion_tokens"] == 8000
+    assert args["reasoning_effort"] == "low"
+    assert args["messages"][0]["content"] == REVIEW_PROMPT
+    assert json.loads(args["messages"][1]["content"]) == payload
+    assert args["response_format"]["json_schema"]["strict"] is True
+    assert args["response_format"]["json_schema"]["schema"] == payload["schema"]
+    assert writer.client.chat.completions.create.call_count == 1
+
+
+def test_older_model_override_does_not_receive_unsupported_reasoning_option():
+    writer = writer_response()
+    writer._json(REVIEW_PROMPT, {"schema": {}}, "gpt-4.1-nano")
+    args = writer.client.chat.completions.create.call_args.kwargs
+    assert args["model"] == "gpt-4.1-nano"
+    assert "reasoning_effort" not in args

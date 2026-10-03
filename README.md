@@ -63,7 +63,7 @@ Required environment variables: `OPENAI_API_KEY`, `WORDPRESS_BASE_URL`,
 and GitHub Actions secrets remotely. Never commit them.
 
 `OPENAI_MODEL` and `OPENAI_REVIEW_MODEL` default to `gpt-5.4-mini`.
-Writing/grouping use low reasoning and editorial review uses medium, with a
+Writing/grouping and editorial review use explicit low reasoning, with a
 8,000-token completion cap including reasoning. The two roles use separate calls.
 API logs record token usage. As of October 2, 2026, standard pricing is $0.75/M input
 and $4.50/M output: https://developers.openai.com/api/docs/models/gpt-5.4-mini .
@@ -107,11 +107,16 @@ finish reason, refusal flag and token counts, without raw API exception messages
 or response bodies. Failed candidate groups retain public source snapshots and
 policy settings for a bounded replay. Review response failures also retain the
 input draft, so replay can repeat that exact review call instead of rewriting.
-The manual `Editorial diagnostic replay`
-workflow reviews the four-source group from October 3 run 37110316545 using the
-unchanged configured models and 8,000-token cap. It has no WordPress credentials
-or publication/state writes. That historical response and draft were not saved;
-the fixture uses currently retained RSS text matched by the exact source URLs.
+The manual `Editorial diagnostic replay` workflow downloads the exact retained
+review request from October 3 run 37155073138. That run proved medium reasoning
+used all 8,000 completion tokens without returning JSON. The repair uses low
+reasoning with the unchanged configured models, 8,000-token cap, review prompt
+and factual gates; an empty/truncated response still fails closed without a
+response-budget retry. The diagnostic workflow repeats one exact review call,
+then checks four live factual/schedule evaluations. It has no WordPress
+credentials or publication/state writes. The older four-source fixture from
+run 37110316545 remains an archived full-writing replay; that earlier response
+and draft were not saved.
 For another saved group, use `python -m rss_to_wp.replay --snapshot snapshot.json`
 with its `replay` object. This incurs model usage and never publishes.
 
