@@ -26,7 +26,7 @@ from rss_to_wp.feeds import (
     pick_entries,
 )
 from rss_to_wp.feeds.filter import parse_entry_date
-from rss_to_wp.feeds.official import parse_official_news
+from rss_to_wp.feeds.official import extension_release, parse_college_news, parse_official_news
 from rss_to_wp.images import download_image, find_fallback_image, find_rss_image
 from rss_to_wp.rewriter.openai_client import EditorialResponseError
 
@@ -46,11 +46,12 @@ def collect_sources(
     for feed_config in config.feeds:
         source_hours = feed_config.max_age_hours or hours
         try:
-            feed = (
-                parse_official_news(feed_config.url, source_hours)
-                if feed_config.source_type == "ms_sos_news"
-                else parse_feed(feed_config.url)
-            )
+            if feed_config.source_type == "ms_sos_news":
+                feed = parse_official_news(feed_config.url, source_hours)
+            elif feed_config.source_type == "nemcc_news":
+                feed = parse_college_news(feed_config.url, source_hours)
+            else:
+                feed = parse_feed(feed_config.url)
         except Exception as exc:
             report.append(
                 {
@@ -84,13 +85,19 @@ def collect_sources(
                     report.append({"status": "duplicate", "url": url})
                     continue
                 date = parse_entry_date(entry)
+                text = get_entry_content(entry)
+                if feed_config.source_type == "msu_extension":
+                    text = extension_release(url, date)
+                    if text is None:
+                        report.append({"status": "skipped", "url": url, "reason": "not_news_release"})
+                        continue
                 source = Source(
                     entry,
                     feed_config,
                     f"link:{url}",
                     url,
                     plain_text(get_entry_title(entry)),
-                    plain_text(get_entry_content(entry)),
+                    plain_text(text),
                     pendulum.instance(date).in_timezone(settings.timezone).isoformat(),
                     feed_config.source_name or plain_text(feed.feed.get("title", feed_config.name)),
                 )
@@ -105,7 +112,7 @@ def collect_sources(
                     continue
                 if url not in by_url or len(source.text) > len(by_url[url].text):
                     by_url[url] = source
-            except (ValueError, TypeError) as exc:
+            except (ValueError, TypeError, OSError) as exc:
                 report.append(
                     {
                         "status": "error",

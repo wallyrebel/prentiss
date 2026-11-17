@@ -7,6 +7,23 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Northeast Mississippi Community College newsroom
+  url: https://nemcc.meritpages.com/news
+  source_name: Northeast Mississippi Community College
+  source_type: nemcc_news
+  default_category: Prentiss County News
+  max_per_run: 2
+- name: Mississippi State University Extension releases
+  url: https://extension.msstate.edu/rss.xml
+  source_name: Mississippi State University Extension Service
+  source_type: msu_extension
+  default_category: Mississippi News
+  max_per_run: 1
+- name: Governor's Office releases
+  url: https://governorreeves.ms.gov/feed/
+  source_name: Office of the Governor of Mississippi
+  default_category: Mississippi News
+  max_per_run: 1
 - name: Mississippi Secretary of State
   url: https://www.sos.ms.gov/news
   source_type: ms_sos_news

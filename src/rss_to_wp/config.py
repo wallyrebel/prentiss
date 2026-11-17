@@ -22,7 +22,7 @@ class FeedConfig(BaseModel):
     max_per_run: int = Field(default=2, ge=1, le=20)
     source_name: Optional[str] = None
     use_original_title: bool = False
-    source_type: Literal["rss", "ms_sos_news"] = "rss"
+    source_type: Literal["rss", "ms_sos_news", "nemcc_news", "msu_extension"] = "rss"
     max_age_hours: Optional[int] = Field(default=None, ge=1, le=168)
 
     @field_validator("url")

@@ -1,6 +1,9 @@
 """Read full releases from the explicitly configured Mississippi SOS newsroom."""
 
 from urllib.parse import urljoin, urlsplit
+import re
+import requests
+from datetime import datetime, timezone, timedelta
 
 import feedparser
 import pendulum
@@ -10,6 +13,54 @@ from rss_to_wp.feeds.filter import is_within_window
 from rss_to_wp.utils.http import fetch_url_content
 
 NEWS_URL = "https://www.sos.ms.gov/news"
+
+
+def newsroom_page(url):
+    response = requests.get(url, timeout=(5, 20), allow_redirects=False,
+                            headers={"User-Agent": "PrentissNews/1.0 (+https://prentissnews.com/)"})
+    response.raise_for_status()
+    if response.status_code != 200:
+        raise ValueError("Newsroom page unavailable")
+    return BeautifulSoup(response.content, "html.parser")
+
+
+def extension_release(url, feed_date):
+    if not re.fullmatch(r"https://extension\.msstate\.edu/news/[a-z0-9-]+/\d{4}/[a-z0-9-]+", url):
+        return None
+    page = newsroom_page(url)
+    stamp = page.select_one(".article--published time[datetime]")
+    body = page.select_one(".article--body .block--field-blocknodenewsfield-body")
+    if not stamp or not body or not feed_date:
+        raise ValueError("Extension release lacks a publication date or body")
+    if datetime.fromisoformat(stamp["datetime"]) != feed_date:
+        raise ValueError("Extension release and feed publication dates disagree")
+    return " ".join(p.get_text(" ", strip=True) for p in body.select("p"))
+
+
+def parse_college_news(url, hours):
+    if url != "https://nemcc.meritpages.com/news":
+        raise ValueError("Unsupported college newsroom")
+    rows = newsroom_page(url).select(".headline-and-summary")
+    if not rows:
+        raise ValueError("College newsroom listing unavailable")
+    entries = []
+    for row in rows[:10]:
+        link = row.select_one("h3 a[href]")
+        cite = row.select_one("cite")
+        if not link or not cite or not re.fullmatch(r"https://nemcc\.meritpages\.com/news/[a-z0-9-]+/\d+", link["href"]):
+            continue
+        text, zone = cite.get_text(" ", strip=True).rsplit(" ", 1)
+        offset = {"EST": -5, "EDT": -4}[zone]
+        date = datetime.strptime(" ".join(text.split()), "%b %d, %Y, %I:%M%p").replace(tzinfo=timezone(timedelta(hours=offset)))
+        if not is_within_window(date, hours=hours, timezone="America/Chicago"):
+            continue
+        release = newsroom_page(link["href"]).select_one("#press-release")
+        if not release or not release.select("p"):
+            raise ValueError("College release body unavailable")
+        entries.append(feedparser.FeedParserDict(title=link.get_text(" ", strip=True),
+                       link=link["href"], published=date.isoformat(),
+                       summary=" ".join(p.get_text(" ", strip=True) for p in release.select("p"))))
+    return feedparser.FeedParserDict(entries=entries, feed={"title": "Northeast Mississippi Community College"})
 
 
 def parse_official_news(url, hours=168):
