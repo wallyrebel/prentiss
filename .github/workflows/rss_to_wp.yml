@@ -2,8 +2,8 @@ name: RSS to WordPress Automation
 
 on:
   schedule:
-    # Four runs/day, away from the top of the hour. UTC; 72-hour source window.
-    - cron: '23 2,8,14,20 * * *'
+    # Eight runs/day, away from the top of the hour. UTC; 72-hour source window.
+    - cron: '23 2,5,8,11,14,17,20,23 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -66,7 +66,7 @@ jobs:
           WORDPRESS_BASE_URL: ${{ secrets.WORDPRESS_BASE_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
-          WORDPRESS_POST_STATUS: ${{ secrets.WORDPRESS_POST_STATUS || 'publish' }}
+          WORDPRESS_POST_STATUS: publish
           TIMEZONE: America/Chicago
           USE_STOCK_IMAGES: 'false'
           DRY_RUN: ${{ inputs.dry_run || false }}
