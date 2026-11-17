@@ -18,7 +18,7 @@ feeds:
   source_name: Mississippi State University Extension Service
   source_type: msu_extension
   default_category: Mississippi News
-  max_per_run: 1
+  max_per_run: 3
 - name: Governor's Office releases
   url: https://governorreeves.ms.gov/feed/
   source_name: Office of the Governor of Mississippi
