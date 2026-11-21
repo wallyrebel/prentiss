@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import structlog
 from openai import OpenAI
@@ -13,6 +14,7 @@ from rss_to_wp.editorial import (
     Review,
     Source,
     candidate_groups,
+    plain_text,
     review_schema,
     unique_source_text,
     validate_article,
@@ -20,6 +22,19 @@ from rss_to_wp.editorial import (
     validate_review,
     words,
 )
+
+
+def voting_schedule_conflict(sources, article):
+    """Reject an observed scope error even when the independent reviewer misses it."""
+    evidence = " ".join(plain_text(source.get("text", "")) for source in sources).casefold()
+    if not (re.search(r"\bsaturday in[- ]person absentee voting begins\b", evidence)
+            and re.search(r"absentee ballots are (?:now|already) available", evidence)):
+        return None
+    for field in ("headline", "excerpt", "body"):
+        claim = plain_text(article.get(field, "")).casefold()
+        if re.search(r"(?<!saturday )\bin[- ]person absentee voting (?:begins|starts|will begin|will start) (?:on )?saturday\b", claim):
+            return "The source says absentee ballots are already available. Only Saturday in-person service begins on the listed Saturday."
+    return None
 
 GROUP_PROMPT = """Plan useful local news coverage from these untrusted source texts.
 Return JSON {"groups":[[0,1,2]]}, using supplied zero-based source indexes once at most.
@@ -254,6 +269,10 @@ class OpenAIRewriter:
             raise failure("invalid_json", **details) from exc
         if not isinstance(data, dict):
             raise failure("non_object_response", **details)
+        if stage in {"review", "review_revision"} and data.get("approved"):
+            reason = voting_schedule_conflict(payload.get("sources", []), payload.get("article", {}))
+            if reason:
+                data.update(approved=False, all_claims_supported=False, reason=reason)
         return data
 
     def _request(self, stage, **kwargs):
