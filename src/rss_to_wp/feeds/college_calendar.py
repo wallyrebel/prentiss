@@ -11,6 +11,8 @@ import requests
 BASE = "https://catalog.nemcc.edu/general-information/"
 CALENDAR = BASE + "calendar.html"
 GRID = BASE + "calendar-grids.html"
+EXAMS = "https://www.nemcc.edu/catalog/general-information/exam-schedule.html"
+PROCTORING = "https://www.nemcc.edu/distance-learning/testing-requirements/index.html"
 CENTRAL = ZoneInfo("America/Chicago")
 
 
@@ -109,8 +111,45 @@ def fall_deadlines():
             count += 1
     if count != 4:
         raise ValueError("Unrecognized fall course formats")
+    timetable = term_table(EXAMS, f"Fall {year}")
+    if timetable and timetable[0][0] == "Exam Time":
+        for row in timetable[1:]:
+            if len(row) != len(timetable[0]) or not re.fullmatch(
+                r"\d{1,2}(:\d{2})? [ap]m", row[0], re.I
+            ):
+                continue
+            for day, course_time in zip(timetable[0][1:], row[1:]):
+                slot = re.fullmatch(r"\d+ (MW|TR) ([\d:\-]+)", course_time)
+                if slot:
+                    days = {"MW": "Monday/Wednesday", "TR": "Tuesday/Thursday"}[slot[1]]
+                    facts.append(
+                        f"The {days} class meeting at {slot[2]} has its exam at {row[0]} on {day}."
+                    )
+    response = requests.get(
+        PROCTORING,
+        timeout=(5, 15),
+        allow_redirects=False,
+        headers={"Accept-Encoding": "gzip, deflate", "User-Agent": "PrentissNews/1.0"},
+    )
+    response.raise_for_status()
+    guidance = BeautifulSoup(response.content, "html.parser")
+    if (
+        response.status_code == 200
+        and guidance.title
+        and "eLearning Test Requirements" in guidance.title.get_text()
+    ):
+        for para in guidance.select("main p"):
+            value = " ".join(para.stripped_strings)
+            if value.startswith(
+                (
+                    "As part of an online course",
+                    "NEMCC Booneville in ",
+                    "Northeast Mississippi Community College uses proctored exams",
+                )
+            ):
+                facts.append(value)
     facts.append(
-        f"Sources: Northeast's college calendar at {CALENDAR} and its term-by-term Important Dates table at {GRID}."
+        f"Sources: Northeast's college calendar at {CALENDAR}, course dates at {GRID}, exam timetable at {EXAMS} and testing instructions at {PROCTORING}."
     )
     entry = FeedParserDict(
         link=f"{GRID}?term={year}-fall",

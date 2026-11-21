@@ -128,9 +128,20 @@ def county_scores(url, hours):
                 evidence.append(
                     f"In the {label} quarter {name} scored {sides[home][1][i]} points and {opponent_name} scored {sides[opponent][1][i]} points."
                 )
+        else:
+            evidence.append(
+                f"The final box for {name} versus {opponent_name} in {sport} does not list a complete quarter-by-quarter scoring line for both teams."
+            )
         for team, records in ((name, local), (opponent_name, other)):
             season = [row for row in records.values() if row[0] <= day]
             wins = sum(row[3] > row[4] for row in season)
+            before = [row for row in season if row[0] < day]
+            if before and len(before) + 1 == len(season):
+                previous_wins = sum(r[3] > r[4] for r in before)
+                evidence.append(
+                    f"Before {day:%A}, {team} had {previous_wins} wins and {len(before) - previous_wins} losses "
+                    f"in its posted finals; this result moved the record to {wins}–{len(season) - wins}."
+                )
             evidence.append(
                 f"Through {day:%B %d}, {team}'s schedule lists {wins} wins and {len(season) - wins} losses "
                 f"with final scores. The points in those games total {sum(row[3] for row in season)} for "
