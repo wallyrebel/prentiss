@@ -1,10 +1,11 @@
 """Read completed varsity basketball games directly from Northeast's official athletics site."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
 import re
+from tempfile import NamedTemporaryFile
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,9 @@ from rss_to_wp.feeds.filter import is_within_window
 HOST = "https://www.nemccathletics.com"
 COLLEGE = "Northeast Mississippi Community College"
 CENTRAL = ZoneInfo("America/Chicago")
+RETAINED = Path(__file__).with_name("verified_college_scores.json")
+SPORTS = {HOST + "/sports/mbkb/index": ("mbkb", "Men's"),
+          HOST + "/sports/wbkb/index": ("wbkb", "Women's")}
 
 
 def _page(url):
@@ -88,9 +92,7 @@ def read_final(page, url, date, sport):
 
 
 def _live_scores(url, hours):
-    sports = {HOST + "/sports/mbkb/index": ("mbkb", "Men's"),
-              HOST + "/sports/wbkb/index": ("wbkb", "Women's")}
-    path, sport = sports[url]
+    path, sport = SPORTS[url]
     listing = _page(url)
     pattern = re.compile(re.escape(HOST) + rf"/sports/{path}/\d{{4}}-\d{{2}}/boxscores/(\d{{8}})_[a-z0-9]+\.xml")
     targets = {}
@@ -116,8 +118,8 @@ def parse_college_scores(url, hours):
     except requests.RequestException as exc:
         # Retained desk-verified records expire on the original game date window.
         # Only a transport failure may use them; identity or score conflicts must surface.
-        records = json.loads(Path(__file__).with_name("verified_college_scores.json").read_bytes())
-        field = "mbkb" if url == HOST + "/sports/mbkb/index" else "wbkb"
+        records = json.loads(RETAINED.read_bytes())
+        field = SPORTS[url][0]
         pattern = re.compile(re.escape(HOST) + rf"/sports/{field}/\d{{4}}-\d{{2}}/boxscores/(\d{{8}})_[a-z0-9]+\.xml")
         entries = []
         for record in records["listings"].get(url, []):
@@ -127,8 +129,39 @@ def parse_college_scores(url, hours):
                 raise ValueError("Retained box score identity mismatch") from exc
             if is_within_window(date, hours=hours, timezone="America/Chicago"):
                 entries.append(feedparser.FeedParserDict(record))
-        if not entries:
+        verified_at = datetime.fromisoformat(records["checked_at"])
+        recently_checked = timedelta(0) <= datetime.now(timezone.utc) - verified_at <= timedelta(hours=18)
+        verified_empty = url in records["listings"] and not records["listings"][url] and recently_checked
+        if not entries and not verified_empty:
             raise
         logging.getLogger(__name__).warning("Official athletics source unavailable (%s); using %d current desk-verified box scores",
                                          type(exc).__name__, len(entries))
         return feedparser.FeedParserDict(entries=entries, feed={"title": COLLEGE + " Athletics"})
+
+
+def refresh_verified_scores():
+    """Refresh both official listings for the recovery desk, without any WordPress writes."""
+    listings = {}
+    for url in SPORTS:
+        listing = _live_scores(url, 72)
+        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary")}
+                         for entry in listing.entries]
+    verified = datetime.now(timezone.utc)
+    snapshot = {"checked_at": verified.isoformat(), "listings": listings}
+    with NamedTemporaryFile(mode="w", dir=RETAINED.parent, encoding="utf-8", suffix=".tmp", delete=False) as output:
+        temporary = Path(output.name)
+        json.dump(snapshot, output, indent=2, ensure_ascii=False)
+        output.write("\n")
+    try:
+        temporary.replace(RETAINED)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return sum(len(items) for items in listings.values())
+
+
+if __name__ == "__main__":
+    import argparse
+    command = argparse.ArgumentParser(description="Refresh desk-verified Northeast basketball box scores")
+    command.add_argument("--refresh", required=True, action="store_true")
+    command.parse_args()
+    print(f"Verified {refresh_verified_scores()} recent finals from both official basketball listings")

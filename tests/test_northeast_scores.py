@@ -36,9 +36,15 @@ def test_only_confirmed_matching_box_scores_supply_evidence():
         read_final(box("Final"), "box", day.replace(day=19), "Men's")
 
 
-def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch):
+def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch, tmp_path):
     from unittest.mock import Mock
+    import json
     url = northeast_scores.HOST + "/sports/mbkb/index"
+    entry = {"title":"Verified final", "published":"2026-11-20T00:00:00-06:00",
+             "link":northeast_scores.HOST+"/sports/mbkb/2026-27/boxscores/20261120_abcd.xml", "summary":"Final"}
+    retained = tmp_path / "scores.json"
+    retained.write_text(json.dumps({"checked_at":"2026-11-20T18:00:00+00:00", "listings":{url:[entry]}}))
+    monkeypatch.setattr(northeast_scores, "RETAINED", retained)
     live = Mock(side_effect=requests.HTTPError("unavailable"))
     monkeypatch.setattr(northeast_scores, "_live_scores", live)
     monkeypatch.setattr(northeast_scores, "is_within_window", Mock(return_value=True))
