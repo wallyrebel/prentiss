@@ -27,6 +27,7 @@ from rss_to_wp.feeds import (
 )
 from rss_to_wp.feeds.filter import parse_entry_date
 from rss_to_wp.feeds.northeast_scores import parse_college_scores
+from rss_to_wp.feeds.county_basketball import county_scores
 from rss_to_wp.feeds.official import extension_release, parse_college_news, parse_official_news
 from rss_to_wp.images import download_image, find_fallback_image, find_rss_image
 from rss_to_wp.rewriter.openai_client import EditorialResponseError
@@ -53,6 +54,8 @@ def collect_sources(
                 feed = parse_college_news(feed_config.url, source_hours)
             elif feed_config.source_type == "nemcc_scores":
                 feed = parse_college_scores(feed_config.url, source_hours)
+            elif feed_config.source_type == "county_scores":
+                feed = county_scores(feed_config.url, source_hours)
             else:
                 feed = parse_feed(feed_config.url)
         except Exception as exc:

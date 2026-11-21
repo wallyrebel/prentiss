@@ -7,6 +7,26 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Wheeler boys varsity basketball finals
+  url: https://www.maxpreps.com/ms/wheeler/wheeler-eagles/basketball/schedule/
+  source_name: Wheeler and opponent varsity basketball records on MaxPreps
+  source_type: county_scores
+  default_category: Prentiss County News
+- name: Wheeler girls varsity basketball finals
+  url: https://www.maxpreps.com/ms/wheeler/wheeler-eagles/basketball/girls/schedule/
+  source_name: Wheeler and opponent varsity basketball records on MaxPreps
+  source_type: county_scores
+  default_category: Prentiss County News
+- name: New Site boys varsity basketball finals
+  url: https://www.maxpreps.com/ms/new-site/new-site-royals/basketball/schedule/
+  source_name: New Site and opponent varsity basketball records on MaxPreps
+  source_type: county_scores
+  default_category: Prentiss County News
+- name: New Site girls varsity basketball finals
+  url: https://www.maxpreps.com/ms/new-site/new-site-royals/basketball/girls/schedule/
+  source_name: New Site and opponent varsity basketball records on MaxPreps
+  source_type: county_scores
+  default_category: Prentiss County News
 - name: Northeast men's basketball final box scores
   url: https://www.nemccathletics.com/sports/mbkb/index
   source_name: Northeast Mississippi Community College Athletics
