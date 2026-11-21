@@ -7,6 +7,18 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Northeast men's basketball final box scores
+  url: https://www.nemccathletics.com/sports/mbkb/index
+  source_name: Northeast Mississippi Community College Athletics
+  source_type: nemcc_scores
+  default_category: Prentiss County News
+  max_per_run: 2
+- name: Northeast women's basketball final box scores
+  url: https://www.nemccathletics.com/sports/wbkb/index
+  source_name: Northeast Mississippi Community College Athletics
+  source_type: nemcc_scores
+  default_category: Prentiss County News
+  max_per_run: 2
 - name: Northeast Mississippi Community College newsroom
   url: https://nemcc.meritpages.com/news
   source_name: Northeast Mississippi Community College
