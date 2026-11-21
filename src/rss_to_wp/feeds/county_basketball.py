@@ -150,6 +150,12 @@ def county_scores(url, hours):
                 id=BASE + game,
                 link=BASE + game,
                 title=title,
+                county_matchup=(
+                    day.isoformat(),
+                    home.replace("/girls/", "/"),
+                    opponent.replace("/girls/", "/"),
+                ),
+                team_level="girls" if "/girls/" in game else "boys",
                 summary=" ".join(evidence),
                 published=played.isoformat(),
             )
@@ -168,3 +174,15 @@ def school_finals(url, hours):
                 entries=entries, feed={"title": "Varsity basketball records on MaxPreps"}
             )
     raise ValueError("Unknown Prentiss County school program")
+
+
+def matched_program_results(sources):
+    by_matchup = {}
+    for source in sources:
+        if source.feed.source_type == "county_scores" and source.entry.get("county_matchup"):
+            by_matchup.setdefault(source.entry["county_matchup"], []).append(source)
+    return [
+        pair
+        for pair in by_matchup.values()
+        if len(pair) == 2 and {s.entry["team_level"] for s in pair} == {"boys", "girls"}
+    ]

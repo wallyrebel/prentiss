@@ -27,7 +27,8 @@ from rss_to_wp.feeds import (
 )
 from rss_to_wp.feeds.filter import parse_entry_date
 from rss_to_wp.feeds.northeast_scores import parse_college_scores
-from rss_to_wp.feeds.county_basketball import school_finals
+from rss_to_wp.feeds.county_basketball import matched_program_results, school_finals
+from rss_to_wp.feeds.college_calendar import fall_deadlines
 from rss_to_wp.feeds.official import extension_release, parse_college_news, parse_official_news
 from rss_to_wp.images import download_image, find_fallback_image, find_rss_image
 from rss_to_wp.rewriter.openai_client import EditorialResponseError
@@ -56,6 +57,8 @@ def collect_sources(
                 feed = parse_college_scores(feed_config.url, source_hours)
             elif feed_config.source_type == "county_scores":
                 feed = school_finals(feed_config.url, source_hours)
+            elif feed_config.source_type == "nemcc_calendar":
+                feed = fall_deadlines()
             else:
                 feed = parse_feed(feed_config.url)
         except Exception as exc:
@@ -211,7 +214,12 @@ def run_pipeline(
                 else:
                     fresh.append(source)
             sources = fresh
-        groups = (
+        # The two verified varsity boxes share both schools and the date. Give the
+        # editor both original records together, after the per-source WordPress check.
+        pairs = matched_program_results(sources) if config.quality.max_sources_per_article >= 2 else []
+        paired_urls = {source.url for pair in pairs for source in pair}
+        sources = [source for source in sources if source.url not in paired_urls]
+        groups = pairs + (
             rewriter.group_sources(sources, config.quality)
             if len(sources) > 1
             else [[s] for s in sources]

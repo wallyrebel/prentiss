@@ -7,6 +7,12 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Northeast fall examination and closure calendar
+  url: https://catalog.nemcc.edu/general-information/calendar-grids.html
+  source_name: Northeast Mississippi Community College catalog
+  source_type: nemcc_calendar
+  default_category: Booneville MS News
+  max_per_run: 1
 - name: Wheeler varsity basketball finals
   url: https://www.maxpreps.com/ms/wheeler/wheeler-eagles/
   source_name: Wheeler and opponent varsity basketball records on MaxPreps
