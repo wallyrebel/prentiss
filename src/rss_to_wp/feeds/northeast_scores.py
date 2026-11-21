@@ -1,6 +1,9 @@
 """Read completed varsity basketball games directly from Northeast's official athletics site."""
 
 from datetime import datetime
+import json
+import logging
+from pathlib import Path
 import re
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
@@ -84,7 +87,7 @@ def read_final(page, url, date, sport):
     return feedparser.FeedParserDict(title=title, link=url, published=date.isoformat(), summary=" ".join(evidence))
 
 
-def parse_college_scores(url, hours):
+def _live_scores(url, hours):
     sports = {HOST + "/sports/mbkb/index": ("mbkb", "Men's"),
               HOST + "/sports/wbkb/index": ("wbkb", "Women's")}
     path, sport = sports[url]
@@ -105,3 +108,27 @@ def parse_college_scores(url, hours):
             if entry is not None:
                 entries.append(entry)
     return feedparser.FeedParserDict(entries=entries, feed={"title": COLLEGE + " Athletics"})
+
+
+def parse_college_scores(url, hours):
+    try:
+        return _live_scores(url, hours)
+    except requests.RequestException as exc:
+        # Retained desk-verified records expire on the original game date window.
+        # Only a transport failure may use them; identity or score conflicts must surface.
+        records = json.loads(Path(__file__).with_name("verified_college_scores.json").read_bytes())
+        field = "mbkb" if url == HOST + "/sports/mbkb/index" else "wbkb"
+        pattern = re.compile(re.escape(HOST) + rf"/sports/{field}/\d{{4}}-\d{{2}}/boxscores/(\d{{8}})_[a-z0-9]+\.xml")
+        entries = []
+        for record in records["listings"].get(url, []):
+            match = pattern.fullmatch(record["link"])
+            date = datetime.fromisoformat(record["published"])
+            if not match or match[1] != date.strftime("%Y%m%d"):
+                raise ValueError("Retained box score identity mismatch") from exc
+            if is_within_window(date, hours=hours, timezone="America/Chicago"):
+                entries.append(feedparser.FeedParserDict(record))
+        if not entries:
+            raise
+        logging.getLogger(__name__).warning("Official athletics source unavailable (%s); using %d current desk-verified box scores",
+                                         type(exc).__name__, len(entries))
+        return feedparser.FeedParserDict(entries=entries, feed={"title": COLLEGE + " Athletics"})

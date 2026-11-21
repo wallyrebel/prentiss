@@ -2,8 +2,10 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 import pytest
+import requests
 
 from rss_to_wp.feeds.northeast_scores import CENTRAL, COLLEGE, read_final
+from rss_to_wp.feeds import northeast_scores
 
 
 def box(status, total="70"):
@@ -32,3 +34,18 @@ def test_only_confirmed_matching_box_scores_supply_evidence():
         read_final(box("Final", total="77"), "box", day, "Men's")
     with pytest.raises(ValueError, match="date"):
         read_final(box("Final"), "box", day.replace(day=19), "Men's")
+
+
+def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch):
+    from unittest.mock import Mock
+    url = northeast_scores.HOST + "/sports/mbkb/index"
+    live = Mock(side_effect=requests.HTTPError("unavailable"))
+    monkeypatch.setattr(northeast_scores, "_live_scores", live)
+    monkeypatch.setattr(northeast_scores, "is_within_window", Mock(return_value=True))
+    assert northeast_scores.parse_college_scores(url, 72).entries
+    monkeypatch.setattr(northeast_scores, "is_within_window", Mock(return_value=False))
+    with pytest.raises(requests.HTTPError):
+        northeast_scores.parse_college_scores(url, 72)
+    live.side_effect = ValueError("Scores disagree")
+    with pytest.raises(ValueError, match="Scores disagree"):
+        northeast_scores.parse_college_scores(url, 72)
