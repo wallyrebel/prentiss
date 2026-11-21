@@ -108,10 +108,17 @@ def county_scores(url, hours):
             continue
         name = other[game][2]
         sport = "girls varsity basketball" if "/girls/" in game else "boys varsity basketball"
-        title = f"{name} {'beats' if points > against else 'falls to'} {opponent_name} {max(points, against)}–{min(points, against)}"
+        title = f"{name} {sport} {'beats' if points > against else 'falls to'} {opponent_name} {max(points, against)}–{min(points, against)}"
+        # Explicit school identities from the district's Our Schools directory.
+        school_name = "Wheeler Attendance Center" if "/wheeler/" in home else "New Site High School"
         evidence = [
-            f"{title} in {sport} on {day:%A, %B %d, %Y}. Both teams' schedules confirm the final score in the game box."
+            f"{title} on {day:%A, %B %d, %Y}. Both teams' schedules confirm the final score in the game box.",
+            f"The Prentiss County School District in Mississippi lists {school_name} in its school directory (www.prentisscountyschools.com/our-district/our-schools).",
         ]
+        if "/booneville/thrasher-rebels/" in opponent:
+            evidence.append(
+                "Thrasher Attendance Center also belongs to the Prentiss County School District, making this a game between two county schools."
+            )
         periods = [h.get_text(strip=True) for h in table.select("thead th")][1:-1]
         if periods == ["Q1", "Q2", "Q3", "Q4"] and all(
             len(nums) == 4 and all(n.isdigit() for n in nums) and sum(map(int, nums)) == total
@@ -148,3 +155,16 @@ def county_scores(url, hours):
             )
         )
     return FeedParserDict(entries=entries, feed={"title": "Varsity basketball records on MaxPreps"})
+
+
+def school_finals(url, hours):
+    for school in SCHOOLS:
+        program = f"{BASE}/ms/{school}/"
+        if url == program:
+            entries = []
+            for sport in ("basketball/schedule/", "basketball/girls/schedule/"):
+                entries.extend(county_scores(program + sport, hours).entries)
+            return FeedParserDict(
+                entries=entries, feed={"title": "Varsity basketball records on MaxPreps"}
+            )
+    raise ValueError("Unknown Prentiss County school program")
