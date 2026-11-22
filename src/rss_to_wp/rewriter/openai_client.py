@@ -124,7 +124,10 @@ Audit all claims, but return only min_facts distinct evidence items, six coverag
 answers and a concise reason. Do not enumerate every supported claim in the output.
 Use zero-based source indexes. Quotes must be found verbatim in text, not metadata.
 Select the provided source passage from the schema's quote choices. Never quote
-the proposed article. A null coverage value means evidence is absent and requires
+the proposed article. Each entry in facts must cite a different passage. Select
+six distinct passages before answering when six facts are required. If the evidence
+falls short, reject the article. Coverage fields may reuse a passage when appropriate.
+A null coverage value means evidence is absent and requires
 rejection. Provide all six coverage fields and a specific reason for the decision.
 Never invent evidence to pass the gate. If evidence is absent, use empty coverage/facts
 and approved=false. All boolean fields must be actual JSON booleans. Explain rejection
