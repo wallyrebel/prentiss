@@ -23,6 +23,16 @@ feeds:
   source_name: New Site and opponent varsity basketball records on MaxPreps
   source_type: county_scores
   default_category: Prentiss County News
+- name: Booneville varsity basketball finals
+  url: https://www.maxpreps.com/ms/booneville/booneville-blue-devils/
+  source_name: Booneville and opponent varsity basketball records on MaxPreps
+  source_type: county_scores
+  default_category: Booneville MS News
+- name: Jumpertown varsity basketball finals
+  url: https://www.maxpreps.com/ms/booneville/jumpertown-cardinals/
+  source_name: Jumpertown and opponent varsity basketball records on MaxPreps
+  source_type: county_scores
+  default_category: Prentiss County News
 - name: Northeast men's basketball final box scores
   url: https://www.nemccathletics.com/sports/mbkb/index
   source_name: Northeast Mississippi Community College Athletics
