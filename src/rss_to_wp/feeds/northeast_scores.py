@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import re
 from tempfile import NamedTemporaryFile
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from zoneinfo import ZoneInfo
 
 import feedparser
@@ -39,6 +39,39 @@ def _text(node):
     return " ".join(node.stripped_strings)
 
 
+def _scoring_plays(box, teams, running_scores):
+    tables = box.select("#pbp-tabpanel table")
+    if len(running_scores) != 2 or len(tables) != len(running_scores[0]):
+        return []
+    evidence = []
+    scoreboard = (0, 0)
+    for index, table in enumerate(tables):
+        caption = _text(table.caption) if table.caption else ""
+        selected = []
+        for row in table.select("tr.score-changed"):
+            parts = [row.select_one(s) for s in (".v-score", ".h-score", ".time", ".play .text", ".team-logo[alt]")]
+            if any(part is None for part in parts):
+                return []
+            away, home, clock, play, logo = parts
+            if not (_text(away).isdigit() and _text(home).isdigit() and re.fullmatch(r"\d{1,2}:[0-5]\d", _text(clock))):
+                return []
+            score = (int(_text(away)), int(_text(home)))
+            side = teams.index(logo["alt"]) if logo["alt"] in teams else None
+            if (side is None or score[1-side] != scoreboard[1-side]
+                    or score[side] - scoreboard[side] not in (1, 2, 3)):
+                return []
+            scoreboard = score
+            selected.append((_text(clock), logo["alt"], _text(play).replace("3-pt.", "3-point"), score))
+        expected = tuple(sum(periods[:index + 1]) for periods in running_scores)
+        if scoreboard != expected:
+            return []
+        if caption and selected:
+            for clock, team, play, score in dict.fromkeys((selected[0], selected[-1])):
+                evidence.append(f"Selected scoring play in the {caption}, {clock} remaining, {team}: {play} "
+                                f"({teams[0]} {score[0]}, {teams[1]} {score[1]}).")
+    return evidence
+
+
 def read_final(page, url, date, sport):
     box = page.select_one("article.game-boxscore.bkb")
     if box is None:
@@ -57,7 +90,10 @@ def read_final(page, url, date, sport):
         raise ValueError("Box score has no decisive final")
     title = f"{sport} basketball, {head[-1]}: {teams[0]} {totals[0]}, {teams[1]} {totals[1]}"
     evidence = [title + "."]
+    if head[1].casefold() == "at" and box.select_one(".head .team.home") and box.select_one(".head .team.visitor"):
+        evidence.append(f"The official matchup identifies {teams[1]} as the home team and {teams[0]} as the visitor.")
     periods = [_text(x) for x in line.select("th.score:not(.total)")]
+    running_scores = []
     for row in line.select("tr:has(th[scope=row])"):
         values = [_text(x) for x in row.select("td.score:not(.total)")]
         if len(values) == len(periods) and all(x.isdigit() for x in values):
@@ -66,16 +102,31 @@ def read_final(page, url, date, sport):
             evidence.append(_text(row.th) + " scoring by period: " + ", ".join(
                 f"period {period}, {value} points" for period, value in zip(periods, values)
             ) + ".")
+            running_scores.append(list(map(int, values)))
+    if periods and len(running_scores) == 2:
+        left = right = 0
+        checkpoints = []
+        for period, a, b in zip(periods, *running_scores):
+            left += a
+            right += b
+            checkpoints.append(f"after period {period}, {left} to {right}")
+        evidence.append(f"Running scores in the order {teams[0]} then {teams[1]}: " + "; ".join(checkpoints) + ".")
+        evidence.extend(_scoring_plays(box, teams, running_scores))
     for row in box.select(".game-info tr"):
         if row.th and row.td and _text(row.th) == "Location":
             evidence.append("Game location: " + _text(row.td) + ".")
     stats = box.select_one(".team-stats table")
     if stats is None or [_text(h) for h in stats.select("tr")[0].select("th")][1:] != teams:
         raise ValueError("Official team statistics missing or mislabeled")
+    comparisons = []
     for row in stats.select("tr:has(th[scope=row])"):
         values = [_text(c) for c in row.select("td")]
         if len(values) == 2 and all(re.fullmatch(r"\d+(?:[-.]\d+)?%?", s) for s in values):
-            evidence.append(f"{_text(row.th)}: {teams[0]} {values[0]}, {teams[1]} {values[1]}.")
+            comparisons.append(f"{_text(row.th)}: {values[0]} versus {values[1]}")
+    if comparisons:
+        # Keep related rows together. Repeating the full school names on every
+        # line made assists, rebounds and turnovers look like syndicated text.
+        evidence.append(f"Team statistics, {teams[0]} first and {teams[1]} second: " + "; ".join(comparisons) + ".")
     for table in box.select("#boxscore-tabpanel .player-stats table"):
         team = _text(table.caption) if table.caption else ""
         headers = [_text(h) for h in table.select("tr")[0].select("th")]
@@ -85,10 +136,74 @@ def read_final(page, url, date, sport):
         for row in table.select("tr:has(.player-name)"):
             values = [_text(c) for c in row.select("td")]
             if len(values) == len(headers) - 1 and values[-1].isdigit():
-                leaders.append((int(values[-1]), _text(row.select_one(".player-name"))))
-        for points, player in sorted(leaders, reverse=True)[:3]:
-            evidence.append(f"{player} scored {points} points for {team}.")
+                leaders.append((int(values[-1]), _text(row.select_one(".player-name")), dict(zip(headers[1:], values))))
+        lines = []
+        for points, player, columns in sorted(leaders, key=lambda item: (item[0], item[1]), reverse=True)[:3]:
+            details = [f"{points} points"]
+            for label, description in (("FGM-A", "field goals"), ("3PM-A", "three-pointers"), ("FTM-A", "free throws")):
+                split = re.fullmatch(r"(\d+)-(\d+)", columns.get(label, ""))
+                if split and int(split[1]) <= int(split[2]):
+                    details.append(f"{split[1]} of {split[2]} {description}")
+            for label, description in (("REB", "rebounds"), ("AST", "assists"), ("STL", "steals")):
+                if columns.get(label, "").isdigit():
+                    details.append(f"{columns[label]} {description}")
+            lines.append(f"{player}: " + ", ".join(details))
+        if lines:
+            evidence.append(f"Individual scoring leaders for {team}: " + "; ".join(lines) + ".")
     return feedparser.FeedParserDict(title=title, link=url, published=date.isoformat(), summary=" ".join(evidence))
+
+
+def _prior_meeting(schedule, box_url):
+    path = urlsplit(box_url).path
+    cards = schedule.select(".event-row.result[data-boxscore]")
+    current = next((card for card in cards if card["data-boxscore"] == path), None)
+    if current is None or not current.select_one(".event-opponent-name"):
+        return ""
+    opponent = _text(current.select_one(".event-opponent-name"))
+    box_dir, current_file = path.rsplit("/", 1)
+    earlier = []
+    for card in cards:
+        target = re.fullmatch(re.escape(box_dir) + r"/(\d{8})_[a-z0-9]+\.xml", card["data-boxscore"])
+        if not target or target[1] >= current_file[:8]:
+            continue
+        label, status, result, when = (card.select_one(s) for s in (".event-opponent-name", ".status", ".event-result", ".date"))
+        if not all((label, status, result, when)) or _text(label) != opponent or _text(status) != "Final":
+            continue
+        date = datetime.strptime(target[1], "%Y%m%d").date()
+        if _text(when) != date.strftime("%A, %B %d"):
+            continue
+        score = re.fullmatch(r"([WL])\s*,\s*(\d+)-(\d+)", _text(result))
+        if score and score[2] != score[3]:
+            outcome = "win" if score[1] == "W" else "loss"
+            earlier.append((date, f"The college schedule records an earlier {outcome} for Northeast against "
+                                  f"{opponent} on {date:%B %d, %Y}, with a final score of {score[2]}-{score[3]}."))
+    return max(earlier)[1] if earlier else ""
+
+
+def _game_recap_context(schedule, entry):
+    path = urlsplit(entry["link"]).path
+    card = next((c for c in schedule.select(".event-row.result[data-boxscore]") if c["data-boxscore"] == path), None)
+    if card is None:
+        return
+    season, box_file = path.split("/boxscores/")
+    recap_path = card.get("data-recap", "")
+    if not re.fullmatch(re.escape(season + "/releases/" + box_file[:8]) + r"[a-z0-9]+", recap_path):
+        return
+    url = HOST + recap_path
+    try:
+        page = _page(url)
+    except requests.RequestException:
+        return
+    story = page.select_one("main .article-content")
+    if story is None or not any(urljoin(url, a["href"]) == entry["link"] for a in page.select("main a[href]")):
+        return
+    for paragraph in story.select("p"):
+        record = re.search(r"\bNortheast (?:improves|moves|falls|drops) to (\d{1,2})-(\d{1,2}) (?:overall(?: record)?|on the (?:year|season))\b", _text(paragraph), re.I)
+        if record:
+            entry["summary"] += (f" The college's official game recap reports that the result left Northeast "
+                                 f"with an overall season record of {record[1]}-{record[2]} (wins-losses).")
+            entry["college_recap_url"] = url
+            break
 
 
 def _live_scores(url, hours):
@@ -104,10 +219,23 @@ def _live_scores(url, hours):
     if not targets and not listing.select_one(f'a[href*="/sports/{path}/"][href$="/schedule"]'):
         raise ValueError("Official basketball schedule unavailable")
     entries = []
+    schedules = {}
     for target, date in sorted(targets.items(), key=lambda item: item[1], reverse=True):
         if is_within_window(date, hours=hours, timezone="America/Chicago"):
             entry = read_final(_page(target), target, date, sport)
             if entry is not None:
+                schedule_url = target.split("/boxscores/")[0] + "/schedule"
+                if schedule_url not in schedules:
+                    try:
+                        schedules[schedule_url] = _page(schedule_url)
+                    except requests.RequestException:
+                        schedules[schedule_url] = None
+                if schedules[schedule_url] is not None:
+                    context = _prior_meeting(schedules[schedule_url], target)
+                    if context:
+                        entry["summary"] += " " + context
+                        entry["college_schedule_url"] = schedule_url
+                    _game_recap_context(schedules[schedule_url], entry)
                 entries.append(entry)
     return feedparser.FeedParserDict(entries=entries, feed={"title": COLLEGE + " Athletics"})
 
@@ -144,7 +272,7 @@ def refresh_verified_scores():
     listings = {}
     for url in SPORTS:
         listing = _live_scores(url, 72)
-        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary")}
+        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary", "college_schedule_url", "college_recap_url") if key in entry}
                          for entry in listing.entries]
     verified = datetime.now(timezone.utc)
     snapshot = {"checked_at": verified.isoformat(), "listings": listings}

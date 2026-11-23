@@ -256,21 +256,24 @@ def review_schema(sources):
             key: {"anyOf": [{"$ref": "#/$defs/Evidence"}, {"type": "null"}]} for key in keys
         },
     }
-    quotes = sorted(
-        {
-            sentence.strip()
-            for source in sources
-            for sentence in re.split(r"(?<=[.!?])\s+", plain_text(source.text))
-            if len(sentence.strip()) >= 15
-        }
-    )
-    if not quotes:
+    choices = []
+    for index, source in enumerate(sources):
+        sentences = re.split(r"(?<=[.!?])\s+", plain_text(source.text))
+        quotes = sorted({s.strip() for s in sentences if len(s.strip()) >= 15})
+        if quotes:
+            choices.append({
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "source_index": {"type": "integer", "enum": [index]},
+                    "quote": {"type": "string", "enum": quotes},
+                    "answer": {"type": "string"},
+                },
+                "required": ["source_index", "quote", "answer"],
+            })
+    if not choices:
         raise ValueError("No source passages available for review")
-    evidence = schema["$defs"]["Evidence"]["properties"]
-    evidence["quote"] = {"type": "string", "enum": quotes}
-    evidence["source_index"] = {"type": "integer", "enum": list(range(len(sources)))}
-    # Local Pydantic validation retains the answer-length constraint.
-    evidence["answer"] = {"type": "string"}
+    schema["$defs"]["Evidence"] = choices[0] if len(choices) == 1 else {"anyOf": choices}
     # Structured output follows schema order: inspect evidence and explain
     # discrepancies before committing to an approval verdict.
     fields = schema["properties"]

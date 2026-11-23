@@ -1,11 +1,13 @@
 from datetime import datetime
+from types import SimpleNamespace
 
 from bs4 import BeautifulSoup
 import pytest
 import requests
 
-from rss_to_wp.feeds.northeast_scores import CENTRAL, COLLEGE, read_final
+from rss_to_wp.editorial import unique_source_text
 from rss_to_wp.feeds import northeast_scores
+from rss_to_wp.feeds.northeast_scores import CENTRAL, COLLEGE, read_final
 
 
 def box(status, total="70"):
@@ -24,6 +26,23 @@ def box(status, total="70"):
       </article><footer>Previous game scores are not evidence</footer>""", "html.parser")
 
 
+def test_box_keeps_distinct_stats_in_team_order_and_reads_labeled_player_columns():
+    official = box('Final')
+    extra = BeautifulSoup('<tr><th scope="row">Assists</th><td>18</td><td>6</td></tr>', 'html.parser')
+    official.select_one('.team-stats table').append(extra.tr)
+    players = BeautifulSoup(f'''<div id="boxscore-tabpanel"><div class="player-stats"><table>
+      <caption>{COLLEGE}</caption><tr><th>Player</th><th>AST</th><th>FGM-A</th><th>REB</th><th>PTS</th></tr>
+      <tr><th class="player-name">Example Guard</th><td>4</td><td>5-8</td><td>3</td><td>13</td></tr>
+      </table></div></div>''', 'html.parser')
+    official.article.append(players.div)
+    entry = read_final(official, 'box', datetime(2026, 11, 20, tzinfo=CENTRAL), "Women's")
+    source = SimpleNamespace(text=entry.summary)
+    distinct = unique_source_text([source, source])
+    assert 'Rebounds: 35 versus 30; Assists: 18 versus 6' in distinct
+    assert 'after period 1, 30 to 31; after period 2, 70 to 61' in distinct
+    assert distinct.count('Example Guard: 13 points, 5 of 8 field goals, 3 rebounds, 4 assists') == 1
+
+
 def test_only_confirmed_matching_box_scores_supply_evidence():
     day = datetime(2026, 11, 20, tzinfo=CENTRAL)
     assert read_final(box("Halftime"), "box", day, "Men's") is None
@@ -34,6 +53,53 @@ def test_only_confirmed_matching_box_scores_supply_evidence():
         read_final(box("Final", total="77"), "box", day, "Men's")
     with pytest.raises(ValueError, match="date"):
         read_final(box("Final"), "box", day.replace(day=19), "Men's")
+
+
+def test_play_by_play_requires_official_scorer_and_matching_period_total():
+    page = BeautifulSoup('''<div id="pbp-tabpanel"><table><caption>1st Quarter</caption>
+      <tr class="score-changed"><td class="time">08:22</td><td class="v-score">0</td>
+      <td class="h-score">2</td><td class="play"><span class="text">Home Guard made layup</span>
+      <img class="team-logo" alt="Home"/></td></tr></table></div>''', 'html.parser')
+    parse = northeast_scores._scoring_plays
+    evidence = parse(page, ['Away', 'Home'], [[0], [2]])
+    assert len(evidence) == 1 and '08:22 remaining, Home: Home Guard made layup' in evidence[0]
+    assert parse(page, ['Away', 'Home'], [[0], [3]]) == []
+    page.img['alt'] = 'Away'
+    assert parse(page, ['Away', 'Home'], [[0], [2]]) == []
+
+
+def test_schedule_context_is_same_season_opponent_and_earlier_final():
+    season = '/sports/wbkb/2026-27/boxscores/'
+    def card(date, name, label, result):
+        return f"""<div class="event-row result" data-boxscore="{season}{date}_game.xml">
+        <span class="event-opponent-name">{name}</span><span class="date">{label}</span>
+        <span class="status">Final</span><span class="event-result">{result}</span></div>"""
+    markup = ''.join([card('20261121', 'Coastal', 'Saturday, November 21', 'W , 71-53'),
+                      card('20261116', 'Coastal', 'Monday, November 16', 'W , 88-53'),
+                      card('20261118', 'Other', 'Wednesday, November 18', 'L , 60-40'),
+                      card('20261126', 'Coastal', 'Thursday, November 26', 'W , 88-40')])
+    page = BeautifulSoup(markup, 'html.parser')
+    url = northeast_scores.HOST + season + '20261121_game.xml'
+    result = northeast_scores._prior_meeting(page, url)
+    assert 'earlier win' in result and 'November 16, 2026' in result and '88-53' in result
+    page.select('.date')[1].string = 'Monday, November 09'
+    assert not northeast_scores._prior_meeting(page, url)
+
+
+def test_record_requires_reciprocal_game_link(monkeypatch):
+    season = '/sports/wbkb/2026-27'
+    box = season + '/boxscores/20261121_1h3o.xml'
+    recap = season + '/releases/20261121abc'
+    schedule = BeautifulSoup(f'<div class="event-row result" data-boxscore="{box}" data-recap="{recap}"></div>', 'html.parser')
+    page = BeautifulSoup(f'<main><a href="{box}">Box Score</a><div class="article-content"><p>Northeast improves to 6-1 overall record on the season.</p></div></main>', 'html.parser')
+    monkeypatch.setattr(northeast_scores, '_page', lambda url: page)
+    entry = {'link': northeast_scores.HOST + box, 'summary': 'Result.'}
+    northeast_scores._game_recap_context(schedule, entry)
+    assert '6-1 (wins-losses)' in entry['summary'] and entry['college_recap_url'].endswith(recap)
+    page.a['href'] = '/other-box'
+    other = {'link': entry['link'], 'summary': 'Result.'}
+    northeast_scores._game_recap_context(schedule, other)
+    assert other['summary'] == 'Result.' and 'college_recap_url' not in other
 
 
 def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch, tmp_path):
