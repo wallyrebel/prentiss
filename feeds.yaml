@@ -7,6 +7,12 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Northeast Regional Library Prentiss County holiday schedules
+  url: https://www.nereg.lib.ms.us/
+  source_name: Northeast Regional Library
+  source_type: nerl_calendar
+  default_category: Prentiss County News
+  max_per_run: 1
 - name: Northeast fall examination and closure calendar
   url: https://catalog.nemcc.edu/general-information/calendar-grids.html
   source_name: Northeast Mississippi Community College catalog
