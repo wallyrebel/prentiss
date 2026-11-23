@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import re
 from tempfile import NamedTemporaryFile
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from zoneinfo import ZoneInfo
 
 import feedparser
@@ -90,6 +90,8 @@ def read_final(page, url, date, sport):
         raise ValueError("Box score has no decisive final")
     title = f"{sport} basketball, {head[-1]}: {teams[0]} {totals[0]}, {teams[1]} {totals[1]}"
     evidence = [title + "."]
+    if head[1].casefold() == "at" and box.select_one(".head .team.home") and box.select_one(".head .team.visitor"):
+        evidence.append(f"The official matchup identifies {teams[1]} as the home team and {teams[0]} as the visitor.")
     periods = [_text(x) for x in line.select("th.score:not(.total)")]
     running_scores = []
     for row in line.select("tr:has(th[scope=row])"):
@@ -151,6 +153,33 @@ def read_final(page, url, date, sport):
     return feedparser.FeedParserDict(title=title, link=url, published=date.isoformat(), summary=" ".join(evidence))
 
 
+def _prior_meeting(schedule, box_url):
+    path = urlsplit(box_url).path
+    cards = schedule.select(".event-row.result[data-boxscore]")
+    current = next((card for card in cards if card["data-boxscore"] == path), None)
+    if current is None or not current.select_one(".event-opponent-name"):
+        return ""
+    opponent = _text(current.select_one(".event-opponent-name"))
+    box_dir, current_file = path.rsplit("/", 1)
+    earlier = []
+    for card in cards:
+        target = re.fullmatch(re.escape(box_dir) + r"/(\d{8})_[a-z0-9]+\.xml", card["data-boxscore"])
+        if not target or target[1] >= current_file[:8]:
+            continue
+        label, status, result, when = (card.select_one(s) for s in (".event-opponent-name", ".status", ".event-result", ".date"))
+        if not all((label, status, result, when)) or _text(label) != opponent or _text(status) != "Final":
+            continue
+        date = datetime.strptime(target[1], "%Y%m%d").date()
+        if _text(when) != date.strftime("%A, %B %d"):
+            continue
+        score = re.fullmatch(r"([WL])\s*,\s*(\d+)-(\d+)", _text(result))
+        if score and score[2] != score[3]:
+            outcome = "win" if score[1] == "W" else "loss"
+            earlier.append((date, f"The college schedule records an earlier {outcome} for Northeast against "
+                                  f"{opponent} on {date:%B %d, %Y}, with a final score of {score[2]}-{score[3]}."))
+    return max(earlier)[1] if earlier else ""
+
+
 def _live_scores(url, hours):
     path, sport = SPORTS[url]
     listing = _page(url)
@@ -164,10 +193,22 @@ def _live_scores(url, hours):
     if not targets and not listing.select_one(f'a[href*="/sports/{path}/"][href$="/schedule"]'):
         raise ValueError("Official basketball schedule unavailable")
     entries = []
+    schedules = {}
     for target, date in sorted(targets.items(), key=lambda item: item[1], reverse=True):
         if is_within_window(date, hours=hours, timezone="America/Chicago"):
             entry = read_final(_page(target), target, date, sport)
             if entry is not None:
+                schedule_url = target.split("/boxscores/")[0] + "/schedule"
+                if schedule_url not in schedules:
+                    try:
+                        schedules[schedule_url] = _page(schedule_url)
+                    except requests.RequestException:
+                        schedules[schedule_url] = None
+                if schedules[schedule_url] is not None:
+                    context = _prior_meeting(schedules[schedule_url], target)
+                    if context:
+                        entry["summary"] += " " + context
+                        entry["college_schedule_url"] = schedule_url
                 entries.append(entry)
     return feedparser.FeedParserDict(entries=entries, feed={"title": COLLEGE + " Athletics"})
 
@@ -204,7 +245,7 @@ def refresh_verified_scores():
     listings = {}
     for url in SPORTS:
         listing = _live_scores(url, 72)
-        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary")}
+        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary", "college_schedule_url") if key in entry}
                          for entry in listing.entries]
     verified = datetime.now(timezone.utc)
     snapshot = {"checked_at": verified.isoformat(), "listings": listings}

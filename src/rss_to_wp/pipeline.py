@@ -175,6 +175,12 @@ def publish_article(article, sources, config, settings, wp):
     if image_result:
         image_bytes, filename, _ = image_result
         media_id = wp.upload_media(image_bytes, filename, alt_text="")
+    citations = [{"url": s.url, "name": s.source_name} for s in sources]
+    for source in sources:
+        if source.feed.source_type == "nemcc_scores" and source.entry.get("college_schedule_url"):
+            schedule = source.entry["college_schedule_url"]
+            if schedule == source.url.split("/boxscores/")[0] + "/schedule" and all(c["url"] != schedule for c in citations):
+                citations.append({"url": schedule, "name": "Northeast season schedule"})
     return wp.create_post(
         title=article["headline"],
         content=article["body"],
@@ -182,7 +188,7 @@ def publish_article(article, sources, config, settings, wp):
         category_ids=category_ids,
         tag_ids=wp.get_or_create_tags(primary.feed.default_tags),
         featured_media_id=media_id,
-        sources=[{"url": s.url, "name": s.source_name} for s in sources],
+        sources=citations,
     )
 
 

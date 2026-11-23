@@ -68,6 +68,24 @@ def test_play_by_play_requires_official_scorer_and_matching_period_total():
     assert parse(page, ['Away', 'Home'], [[0], [2]]) == []
 
 
+def test_schedule_context_is_same_season_opponent_and_earlier_final():
+    season = '/sports/wbkb/2026-27/boxscores/'
+    def card(date, name, label, result):
+        return f"""<div class="event-row result" data-boxscore="{season}{date}_game.xml">
+        <span class="event-opponent-name">{name}</span><span class="date">{label}</span>
+        <span class="status">Final</span><span class="event-result">{result}</span></div>"""
+    markup = ''.join([card('20261121', 'Coastal', 'Saturday, November 21', 'W , 71-53'),
+                      card('20261116', 'Coastal', 'Monday, November 16', 'W , 88-53'),
+                      card('20261118', 'Other', 'Wednesday, November 18', 'L , 60-40'),
+                      card('20261126', 'Coastal', 'Thursday, November 26', 'W , 88-40')])
+    page = BeautifulSoup(markup, 'html.parser')
+    url = northeast_scores.HOST + season + '20261121_game.xml'
+    result = northeast_scores._prior_meeting(page, url)
+    assert 'earlier win' in result and 'November 16, 2026' in result and '88-53' in result
+    page.select('.date')[1].string = 'Monday, November 09'
+    assert not northeast_scores._prior_meeting(page, url)
+
+
 def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch, tmp_path):
     from unittest.mock import Mock
     import json
