@@ -55,6 +55,19 @@ def test_only_confirmed_matching_box_scores_supply_evidence():
         read_final(box("Final"), "box", day.replace(day=19), "Men's")
 
 
+def test_play_by_play_requires_official_scorer_and_matching_period_total():
+    page = BeautifulSoup('''<div id="pbp-tabpanel"><table><caption>1st Quarter</caption>
+      <tr class="score-changed"><td class="time">08:22</td><td class="v-score">0</td>
+      <td class="h-score">2</td><td class="play"><span class="text">Home Guard made layup</span>
+      <img class="team-logo" alt="Home"/></td></tr></table></div>''', 'html.parser')
+    parse = northeast_scores._scoring_plays
+    evidence = parse(page, ['Away', 'Home'], [[0], [2]])
+    assert len(evidence) == 1 and '08:22 remaining, Home: Home Guard made layup' in evidence[0]
+    assert parse(page, ['Away', 'Home'], [[0], [3]]) == []
+    page.img['alt'] = 'Away'
+    assert parse(page, ['Away', 'Home'], [[0], [2]]) == []
+
+
 def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch, tmp_path):
     from unittest.mock import Mock
     import json

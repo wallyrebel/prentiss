@@ -39,6 +39,39 @@ def _text(node):
     return " ".join(node.stripped_strings)
 
 
+def _scoring_plays(box, teams, running_scores):
+    tables = box.select("#pbp-tabpanel table")
+    if len(running_scores) != 2 or len(tables) != len(running_scores[0]):
+        return []
+    evidence = []
+    scoreboard = (0, 0)
+    for index, table in enumerate(tables):
+        caption = _text(table.caption) if table.caption else ""
+        selected = []
+        for row in table.select("tr.score-changed"):
+            parts = [row.select_one(s) for s in (".v-score", ".h-score", ".time", ".play .text", ".team-logo[alt]")]
+            if any(part is None for part in parts):
+                return []
+            away, home, clock, play, logo = parts
+            if not (_text(away).isdigit() and _text(home).isdigit() and re.fullmatch(r"\d{1,2}:[0-5]\d", _text(clock))):
+                return []
+            score = (int(_text(away)), int(_text(home)))
+            side = teams.index(logo["alt"]) if logo["alt"] in teams else None
+            if (side is None or score[1-side] != scoreboard[1-side]
+                    or score[side] - scoreboard[side] not in (1, 2, 3)):
+                return []
+            scoreboard = score
+            selected.append((_text(clock), logo["alt"], _text(play).replace("3-pt.", "3-point"), score))
+        expected = tuple(sum(periods[:index + 1]) for periods in running_scores)
+        if scoreboard != expected:
+            return []
+        if caption and selected:
+            for clock, team, play, score in dict.fromkeys((selected[0], selected[-1])):
+                evidence.append(f"{caption}, {clock} remaining, {team}: {play} "
+                                f"({teams[0]} {score[0]}, {teams[1]} {score[1]}).")
+    return evidence
+
+
 def read_final(page, url, date, sport):
     box = page.select_one("article.game-boxscore.bkb")
     if box is None:
@@ -76,6 +109,7 @@ def read_final(page, url, date, sport):
             right += b
             checkpoints.append(f"after period {period}, {left} to {right}")
         evidence.append(f"Running scores in the order {teams[0]} then {teams[1]}: " + "; ".join(checkpoints) + ".")
+        evidence.extend(_scoring_plays(box, teams, running_scores))
     for row in box.select(".game-info tr"):
         if row.th and row.td and _text(row.th) == "Location":
             evidence.append("Game location: " + _text(row.td) + ".")
