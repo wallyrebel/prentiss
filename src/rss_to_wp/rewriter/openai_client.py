@@ -79,6 +79,9 @@ or treat syndicated copies as independent corroboration. Preserve conflicts
 and skip when they prevent an accurate article. Do not manufacture local relevance.
 Use the requested word limits only when the facts support that length. Never pad,
 repeat, add generic background, or say 'details were not provided' to fill space.
+In game coverage, cite a documented season result when available. The supplied
+scoring plays are selected examples. Name a scorer in a specific period only
+when the source explicitly records that player's scoring play in that period.
 When evidence is inadequate return {"decision":"skip","reason":"specific missing information"}.
 Otherwise return {"decision":"publish","headline":"specific factual headline",
 "excerpt":"one factual summary, 25-45 words", "body":"HTML article"}.

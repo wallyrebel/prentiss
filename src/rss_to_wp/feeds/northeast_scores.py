@@ -67,7 +67,7 @@ def _scoring_plays(box, teams, running_scores):
             return []
         if caption and selected:
             for clock, team, play, score in dict.fromkeys((selected[0], selected[-1])):
-                evidence.append(f"{caption}, {clock} remaining, {team}: {play} "
+                evidence.append(f"Selected scoring play in the {caption}, {clock} remaining, {team}: {play} "
                                 f"({teams[0]} {score[0]}, {teams[1]} {score[1]}).")
     return evidence
 
@@ -180,6 +180,32 @@ def _prior_meeting(schedule, box_url):
     return max(earlier)[1] if earlier else ""
 
 
+def _game_recap_context(schedule, entry):
+    path = urlsplit(entry["link"]).path
+    card = next((c for c in schedule.select(".event-row.result[data-boxscore]") if c["data-boxscore"] == path), None)
+    if card is None:
+        return
+    season, box_file = path.split("/boxscores/")
+    recap_path = card.get("data-recap", "")
+    if not re.fullmatch(re.escape(season + "/releases/" + box_file[:8]) + r"[a-z0-9]+", recap_path):
+        return
+    url = HOST + recap_path
+    try:
+        page = _page(url)
+    except requests.RequestException:
+        return
+    story = page.select_one("main .article-content")
+    if story is None or not any(urljoin(url, a["href"]) == entry["link"] for a in page.select("main a[href]")):
+        return
+    for paragraph in story.select("p"):
+        record = re.search(r"\bNortheast (?:improves|moves|falls|drops) to (\d{1,2})-(\d{1,2}) (?:overall(?: record)?|on the (?:year|season))\b", _text(paragraph), re.I)
+        if record:
+            entry["summary"] += (f" The college's official game recap reports that the result left Northeast "
+                                 f"with an overall season record of {record[1]}-{record[2]} (wins-losses).")
+            entry["college_recap_url"] = url
+            break
+
+
 def _live_scores(url, hours):
     path, sport = SPORTS[url]
     listing = _page(url)
@@ -209,6 +235,7 @@ def _live_scores(url, hours):
                     if context:
                         entry["summary"] += " " + context
                         entry["college_schedule_url"] = schedule_url
+                    _game_recap_context(schedules[schedule_url], entry)
                 entries.append(entry)
     return feedparser.FeedParserDict(entries=entries, feed={"title": COLLEGE + " Athletics"})
 
@@ -245,7 +272,7 @@ def refresh_verified_scores():
     listings = {}
     for url in SPORTS:
         listing = _live_scores(url, 72)
-        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary", "college_schedule_url") if key in entry}
+        listings[url] = [{key: entry[key] for key in ("title", "link", "published", "summary", "college_schedule_url", "college_recap_url") if key in entry}
                          for entry in listing.entries]
     verified = datetime.now(timezone.utc)
     snapshot = {"checked_at": verified.isoformat(), "listings": listings}

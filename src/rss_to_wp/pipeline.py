@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -177,10 +178,15 @@ def publish_article(article, sources, config, settings, wp):
         media_id = wp.upload_media(image_bytes, filename, alt_text="")
     citations = [{"url": s.url, "name": s.source_name} for s in sources]
     for source in sources:
-        if source.feed.source_type == "nemcc_scores" and source.entry.get("college_schedule_url"):
-            schedule = source.entry["college_schedule_url"]
-            if schedule == source.url.split("/boxscores/")[0] + "/schedule" and all(c["url"] != schedule for c in citations):
-                citations.append({"url": schedule, "name": "Northeast season schedule"})
+        if source.feed.source_type != "nemcc_scores" or "/boxscores/" not in source.url:
+            continue
+        season, game = source.url.split("/boxscores/", 1)
+        schedule = source.entry.get("college_schedule_url", "")
+        if schedule == season + "/schedule" and all(c["url"] != schedule for c in citations):
+            citations.append({"url": schedule, "name": "Northeast season schedule"})
+        recap = source.entry.get("college_recap_url", "")
+        if re.fullmatch(re.escape(season + "/releases/" + game[:8]) + r"[a-z0-9]+", recap):
+            citations.append({"url": recap, "name": "Northeast Athletics game recap"})
     return wp.create_post(
         title=article["headline"],
         content=article["body"],

@@ -86,6 +86,22 @@ def test_schedule_context_is_same_season_opponent_and_earlier_final():
     assert not northeast_scores._prior_meeting(page, url)
 
 
+def test_record_requires_reciprocal_game_link(monkeypatch):
+    season = '/sports/wbkb/2026-27'
+    box = season + '/boxscores/20261121_1h3o.xml'
+    recap = season + '/releases/20261121abc'
+    schedule = BeautifulSoup(f'<div class="event-row result" data-boxscore="{box}" data-recap="{recap}"></div>', 'html.parser')
+    page = BeautifulSoup(f'<main><a href="{box}">Box Score</a><div class="article-content"><p>Northeast improves to 6-1 overall record on the season.</p></div></main>', 'html.parser')
+    monkeypatch.setattr(northeast_scores, '_page', lambda url: page)
+    entry = {'link': northeast_scores.HOST + box, 'summary': 'Result.'}
+    northeast_scores._game_recap_context(schedule, entry)
+    assert '6-1 (wins-losses)' in entry['summary'] and entry['college_recap_url'].endswith(recap)
+    page.a['href'] = '/other-box'
+    other = {'link': entry['link'], 'summary': 'Result.'}
+    northeast_scores._game_recap_context(schedule, other)
+    assert other['summary'] == 'Result.' and 'college_recap_url' not in other
+
+
 def test_retained_finals_expire_and_never_replace_a_conflicting_box(monkeypatch, tmp_path):
     from unittest.mock import Mock
     import json
