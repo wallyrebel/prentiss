@@ -58,6 +58,7 @@ def read_final(page, url, date, sport):
     title = f"{sport} basketball, {head[-1]}: {teams[0]} {totals[0]}, {teams[1]} {totals[1]}"
     evidence = [title + "."]
     periods = [_text(x) for x in line.select("th.score:not(.total)")]
+    running_scores = []
     for row in line.select("tr:has(th[scope=row])"):
         values = [_text(x) for x in row.select("td.score:not(.total)")]
         if len(values) == len(periods) and all(x.isdigit() for x in values):
@@ -66,16 +67,30 @@ def read_final(page, url, date, sport):
             evidence.append(_text(row.th) + " scoring by period: " + ", ".join(
                 f"period {period}, {value} points" for period, value in zip(periods, values)
             ) + ".")
+            running_scores.append(list(map(int, values)))
+    if periods and len(running_scores) == 2:
+        left = right = 0
+        checkpoints = []
+        for period, a, b in zip(periods, *running_scores):
+            left += a
+            right += b
+            checkpoints.append(f"after period {period}, {left} to {right}")
+        evidence.append(f"Running scores in the order {teams[0]} then {teams[1]}: " + "; ".join(checkpoints) + ".")
     for row in box.select(".game-info tr"):
         if row.th and row.td and _text(row.th) == "Location":
             evidence.append("Game location: " + _text(row.td) + ".")
     stats = box.select_one(".team-stats table")
     if stats is None or [_text(h) for h in stats.select("tr")[0].select("th")][1:] != teams:
         raise ValueError("Official team statistics missing or mislabeled")
+    comparisons = []
     for row in stats.select("tr:has(th[scope=row])"):
         values = [_text(c) for c in row.select("td")]
         if len(values) == 2 and all(re.fullmatch(r"\d+(?:[-.]\d+)?%?", s) for s in values):
-            evidence.append(f"{_text(row.th)}: {teams[0]} {values[0]}, {teams[1]} {values[1]}.")
+            comparisons.append(f"{_text(row.th)}: {values[0]} versus {values[1]}")
+    if comparisons:
+        # Keep related rows together. Repeating the full school names on every
+        # line made assists, rebounds and turnovers look like syndicated text.
+        evidence.append(f"Team statistics, {teams[0]} first and {teams[1]} second: " + "; ".join(comparisons) + ".")
     for table in box.select("#boxscore-tabpanel .player-stats table"):
         team = _text(table.caption) if table.caption else ""
         headers = [_text(h) for h in table.select("tr")[0].select("th")]
@@ -85,9 +100,20 @@ def read_final(page, url, date, sport):
         for row in table.select("tr:has(.player-name)"):
             values = [_text(c) for c in row.select("td")]
             if len(values) == len(headers) - 1 and values[-1].isdigit():
-                leaders.append((int(values[-1]), _text(row.select_one(".player-name"))))
-        for points, player in sorted(leaders, reverse=True)[:3]:
-            evidence.append(f"{player} scored {points} points for {team}.")
+                leaders.append((int(values[-1]), _text(row.select_one(".player-name")), dict(zip(headers[1:], values))))
+        lines = []
+        for points, player, columns in sorted(leaders, key=lambda item: (item[0], item[1]), reverse=True)[:3]:
+            details = [f"{points} points"]
+            for label, description in (("FGM-A", "field goals"), ("3PM-A", "three-pointers"), ("FTM-A", "free throws")):
+                split = re.fullmatch(r"(\d+)-(\d+)", columns.get(label, ""))
+                if split and int(split[1]) <= int(split[2]):
+                    details.append(f"{split[1]} of {split[2]} {description}")
+            for label, description in (("REB", "rebounds"), ("AST", "assists"), ("STL", "steals")):
+                if columns.get(label, "").isdigit():
+                    details.append(f"{columns[label]} {description}")
+            lines.append(f"{player}: " + ", ".join(details))
+        if lines:
+            evidence.append(f"Individual scoring leaders for {team}: " + "; ".join(lines) + ".")
     return feedparser.FeedParserDict(title=title, link=url, published=date.isoformat(), summary=" ".join(evidence))
 
 
