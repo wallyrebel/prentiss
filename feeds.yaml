@@ -7,6 +7,11 @@ category_rules:
     Site|Thrasher|Wheeler)\b
   category: Prentiss County News
 feeds:
+- name: Prentiss County verified public records
+  url: https://raw.githubusercontent.com/wallyrebel/MississippiNewsGroup/main/data/public-records/prentiss.xml
+  source_name: Mississippi News Group public records desk, citing Tennessee Valley Authority and school district records
+  default_category: Prentiss County News
+  max_per_run: 1
 - name: Northeast Regional Library Prentiss County holiday schedules
   url: https://www.nereg.lib.ms.us/
   source_name: Northeast Regional Library
