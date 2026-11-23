@@ -144,7 +144,15 @@ def candidate_groups(sources: list[Source], policy: QualityPolicy) -> list[list[
 
 
 def assessment_key(sources: list[Source], policy: QualityPolicy, model: str) -> str:
-    parts = sorted(f"{s.url}|{s.text}" for s in sources)
+    # A corrected item credit changes the evidence the reviewer sees. Keep
+    # existing rejection keys for feeds with a pinned publisher or no item credit.
+    parts = []
+    for source in sources:
+        part = f"{source.url}|{source.text}"
+        if not source.feed.source_name and (source.entry.get("source") or {}).get("title"):
+            part += f"|source:{source.source_name}"
+        parts.append(part)
+    parts.sort()
     return hashlib.sha256(
         (POLICY_VERSION + policy.model_dump_json() + model + "|".join(parts)).encode()
     ).hexdigest()

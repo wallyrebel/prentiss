@@ -273,6 +273,25 @@ def test_old_dry_run_does_not_poison_state(tmp_path):
     assert not store.is_source_processed("https://example.org/a")
 
 
+def test_syndicated_entry_credits_original_authority(monkeypatch, tmp_path, feed, settings, policy):
+    rss = f"""<rss version="2.0"><channel><title>Local records desk</title><item>
+      <title>Award recipients</title><link>https://example.org/awards</link>
+      <pubDate>{pendulum.now().to_rfc822_string()}</pubDate>
+      <source url="https://www.tva.com/">Tennessee Valley Authority</source>
+      <description>{TEXT}</description></item></channel></rss>"""
+    parsed = feedparser.parse(rss)
+    monkeypatch.setattr("rss_to_wp.pipeline.parse_feed", lambda _: parsed)
+    config = FeedsConfig(feeds=[feed])
+    store = DedupeStore(tmp_path / "credits.db")
+    source, = collect_sources(config, settings, store, 72, [])
+    assert source.source_name == "Tennessee Valley Authority"
+    credited = assessment_key([source], policy, "model")
+    del parsed.entries[0]["source"]
+    fallback, = collect_sources(config, settings, store, 72, [])
+    assert fallback.source_name == "Local records desk"
+    assert assessment_key([fallback], policy, "model") != credited
+
+
 def test_dry_run_never_marks_or_uploads(
     monkeypatch, tmp_path, source, article, review, settings, policy
 ):

@@ -103,6 +103,10 @@ def collect_sources(
                     if text is None:
                         report.append({"status": "skipped", "url": url, "reason": "not_news_release"})
                         continue
+                attribution = feed_config.source_name
+                if not attribution:
+                    item_source = entry.get("source") or {}
+                    attribution = plain_text(item_source.get("title") or feed.feed.get("title") or feed_config.name)
                 source = Source(
                     entry,
                     feed_config,
@@ -111,7 +115,7 @@ def collect_sources(
                     plain_text(get_entry_title(entry)),
                     plain_text(text),
                     pendulum.instance(date).in_timezone(settings.timezone).isoformat(),
-                    feed_config.source_name or plain_text(feed.feed.get("title", feed_config.name)),
+                    attribution,
                 )
                 if len(source.text) > 30000:
                     report.append(
