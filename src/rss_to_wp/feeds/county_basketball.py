@@ -10,7 +10,13 @@ from feedparser import FeedParserDict
 import requests
 
 BASE = "https://www.maxpreps.com"
-SCHOOLS = ("wheeler/wheeler-eagles", "new-site/new-site-royals")
+COUNTY_DIRECTORY = "www.prentisscountyschools.com/our-district/our-schools"
+SCHOOLS = {
+    "wheeler/wheeler-eagles": ("Wheeler Attendance Center", "Prentiss County School District", COUNTY_DIRECTORY),
+    "new-site/new-site-royals": ("New Site High School", "Prentiss County School District", COUNTY_DIRECTORY),
+    "booneville/jumpertown-cardinals": ("Jumpertown Attendance Center", "Prentiss County School District", COUNTY_DIRECTORY),
+    "booneville/booneville-blue-devils": ("Booneville High School", "Booneville School District", "www.boonevilleschools.org"),
+}
 SCHEDULES = {
     f"{BASE}/ms/{school}/basketball/{level}schedule/"
     for school in SCHOOLS
@@ -76,6 +82,8 @@ def county_scores(url, hours):
         raise ValueError("Unknown county school")
     schedule = lru_cache(maxsize=12)(lambda path: results(page(BASE + path + "schedule/")))
     home = url.removeprefix(BASE).removesuffix("schedule/")
+    school_key = home.removeprefix("/ms/").split("/basketball/")[0]
+    school_name, district, directory = SCHOOLS[school_key]
     local = schedule(home)
     entries = []
     now = datetime.now(ZONE)
@@ -109,13 +117,11 @@ def county_scores(url, hours):
         name = other[game][2]
         sport = "girls varsity basketball" if "/girls/" in game else "boys varsity basketball"
         title = f"{name} {sport} {'beats' if points > against else 'falls to'} {opponent_name} {max(points, against)}–{min(points, against)}"
-        # Explicit school identities from the district's Our Schools directory.
-        school_name = "Wheeler Attendance Center" if "/wheeler/" in home else "New Site High School"
         evidence = [
             f"{title} on {day:%A, %B %d, %Y}. Both teams' schedules confirm the final score in the game box.",
-            f"The Prentiss County School District in Mississippi lists {school_name} in its school directory (www.prentisscountyschools.com/our-district/our-schools).",
+            f"The {district} in Mississippi lists {school_name} in its school directory ({directory}).",
         ]
-        if "/booneville/thrasher-rebels/" in opponent:
+        if "/booneville/thrasher-rebels/" in opponent and district == "Prentiss County School District":
             evidence.append(
                 "Thrasher Attendance Center also belongs to the Prentiss County School District, making this a game between two county schools."
             )

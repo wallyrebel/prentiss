@@ -561,3 +561,16 @@ def test_repeated_or_stale_sources_do_not_form_a_story(source):
         source, url="https://example.org/c", published=pendulum.now().subtract(days=5).isoformat()
     )
     assert validate_proposed_groups([[0, 1]], [source, stale], QualityPolicy()) == []
+
+
+def test_review_cannot_attribute_a_source_passage_to_the_other_school(source):
+    from dataclasses import replace
+
+    first = replace(source, text="Booneville won its home game Friday.")
+    second = replace(source, text="Jumpertown played Ashland on Friday.")
+    choices = review_schema([first, second])["$defs"]["Evidence"]["anyOf"]
+    passages_by_source = {
+        choice["properties"]["source_index"]["enum"][0]: choice["properties"]["quote"]["enum"]
+        for choice in choices
+    }
+    assert passages_by_source == {0: [first.text], 1: [second.text]}
