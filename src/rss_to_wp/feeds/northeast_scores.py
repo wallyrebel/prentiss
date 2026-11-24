@@ -96,15 +96,31 @@ def _live_scores(url, hours):
     listing = _page(url)
     pattern = re.compile(re.escape(HOST) + rf"/sports/{path}/\d{{4}}-\d{{2}}/boxscores/(\d{{8}})_[a-z0-9]+\.xml")
     targets = {}
+    upcoming = set()
+    listed_final = set()
     for link in listing.select("a[href]"):
         target = urljoin(url, link["href"])
         match = pattern.fullmatch(target)
         if match:
-            targets[target] = datetime.strptime(match[1], "%Y%m%d").replace(tzinfo=CENTRAL)
+            date = datetime.strptime(match[1], "%Y%m%d").replace(tzinfo=CENTRAL)
+            card = link.find_parent(class_="card-body")
+            status = card.select_one(".sport-date-status .status") if card else None
+            if status and re.match(r"^Final\b", _text(status), re.I):
+                listed_final.add(target)
+            elif link.get("title", "").casefold() == "live stats" and status:
+                tip = re.fullmatch(r"(\d{1,2}:\d{2} [AP]M) (CST|CDT)", _text(status), re.I)
+                if tip:
+                    clock = datetime.strptime(tip[1].upper(), "%I:%M %p")
+                    start = date.replace(hour=clock.hour, minute=clock.minute)
+                    if start.tzname() == tip[2].upper() and start > datetime.now(CENTRAL):
+                        upcoming.add(target)
+            targets[target] = date
     if not targets and not listing.select_one(f'a[href*="/sports/{path}/"][href$="/schedule"]'):
         raise ValueError("Official basketball schedule unavailable")
     entries = []
     for target, date in sorted(targets.items(), key=lambda item: item[1], reverse=True):
+        if target in upcoming and target not in listed_final:
+            continue
         if is_within_window(date, hours=hours, timezone="America/Chicago"):
             entry = read_final(_page(target), target, date, sport)
             if entry is not None:

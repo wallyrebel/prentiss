@@ -8,6 +8,28 @@ from rss_to_wp.feeds.northeast_scores import CENTRAL, COLLEGE, read_final
 from rss_to_wp.feeds import northeast_scores
 
 
+def test_only_confirmed_future_live_stats_skip_box_lookup(monkeypatch):
+    from datetime import timedelta
+    future = datetime.now(CENTRAL) + timedelta(days=1)
+    code = future.strftime("%Y%m%d")
+    schedule = northeast_scores.HOST + "/sports/mbkb/index"
+    path = f"/sports/mbkb/2026-27/boxscores/{code}_abcd.xml"
+    def listing(status):
+        return BeautifulSoup(f"""
+          <a href="/sports/mbkb/2026-27/schedule">Schedule</a>
+          <a href="{path}">Live stats</a>
+          <div class="card-body"><div class="sport-date-status"><span class="status">{status}</span></div>
+          <a href="{path}" title="Live stats">Live stats</a></div>""", "html.parser")
+    pages = {schedule: listing("7:30 PM " + future.tzname())}
+    monkeypatch.setattr(northeast_scores, "_page", pages.__getitem__)
+    monkeypatch.setattr(northeast_scores, "is_within_window", lambda *args, **kwargs: True)
+    assert not northeast_scores._live_scores(schedule, 72).entries
+    pages[schedule] = listing("Final")
+    pages[northeast_scores.HOST + path] = BeautifulSoup("<main>Unavailable</main>", "html.parser")
+    with pytest.raises(ValueError, match="box score unavailable"):
+        northeast_scores._live_scores(schedule, 72)
+
+
 def box(status, total="70"):
     return BeautifulSoup(f"""
       <article class="game-boxscore bkb">
