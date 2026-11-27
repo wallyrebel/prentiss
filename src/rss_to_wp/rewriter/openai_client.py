@@ -77,6 +77,9 @@ h2 sections and preserve each event's who, what, where, when and documented purp
 Never imply different events happened together, combine unrelated crime incidents,
 or treat syndicated copies as independent corroboration. Preserve conflicts
 and skip when they prevent an accurate article. Do not manufacture local relevance.
+Do not expand a numbered group to all schools, residents or organizations in the county.
+Name the affected schools when a short headline could imply universal coverage.
+Do not attribute a calculation from two source tables to an explicit agency statement.
 Use the requested word limits only when the facts support that length. Never pad,
 repeat, add generic background, or say 'details were not provided' to fill space.
 When evidence is inadequate return {"decision":"skip","reason":"specific missing information"}.
@@ -102,6 +105,9 @@ modifies the TYPE OF SERVICE; in the latter claim it only modifies the start dat
 This removes a material restriction. Reject it, even if every date matches and
 another paragraph says ballots are already available. This is an unsupported claim,
 not a harmless paraphrase. Apply this scope check to all limited services and groups.
+Check the headline separately. Four county schools sharing a region does not mean
+all county schools share it. Distinguish calculations made from tables from
+claims explicitly stated by the source.
 Build evidence first. In reason, explicitly discuss any lost scope, conflicting
 availability, eligibility or modal qualifiers before setting the final booleans.
 Require who, what, where, when and why, supported in sources AND covered in the article.

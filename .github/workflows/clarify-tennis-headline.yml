@@ -1,0 +1,26 @@
+name: Clarify the four schools in tennis post 9034
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: prentiss-wordpress-publisher
+  cancel-in-progress: false
+jobs:
+  correct:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install requests
+      - name: Correct the existing public article and verify the result
+        env:
+          WORDPRESS_BASE_URL: ${{ secrets.WORDPRESS_BASE_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python scripts/clarify_tennis_9034.py
