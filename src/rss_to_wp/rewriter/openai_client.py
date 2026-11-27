@@ -82,6 +82,9 @@ Name the affected schools when a short headline could imply universal coverage.
 Do not attribute a calculation from two source tables to an explicit agency statement.
 Use the requested word limits only when the facts support that length. Never pad,
 repeat, add generic background, or say 'details were not provided' to fill space.
+Aim for body_target_words in the body alone when the source supports it. The headline,
+excerpt, HTML tags and source links do not count. Include practical details and the
+original source of each claim. Leave out general advice unrelated to the local record.
 When evidence is inadequate return {"decision":"skip","reason":"specific missing information"}.
 Otherwise return {"decision":"publish","headline":"specific factual headline",
 "excerpt":"one factual summary, 25-45 words", "body":"HTML article"}.
@@ -308,12 +311,12 @@ class OpenAIRewriter:
         recent_stories: list[dict] | None = None,
     ) -> dict:
         source_words = len(words(unique_source_text(sources)))
+        maximum = min(policy.max_article_words, int(source_words * policy.max_expansion_ratio))
         payload = {
             "audience": policy.audience,
             "min_words": policy.min_article_words,
-            "max_words": min(
-                policy.max_article_words, int(source_words * policy.max_expansion_ratio)
-            ),
+            "max_words": maximum,
+            "body_target_words": min(maximum, policy.min_article_words + 35),
             "min_facts": policy.min_facts,
             "sources": [s.payload() for s in sources],
         }
@@ -347,7 +350,7 @@ class OpenAIRewriter:
                     "revision": {
                         "errors": errors,
                         "actual_words": len(words(article["body"])),
-                        "instruction": "Revise once using additional supported details only. Recount the words. Return skip if the facts cannot support the required length; never pad.",
+                        "instruction": "Compare the previous body with the original evidence. Restore distinct facts the draft left out, including schedules, terms, amounts or changes over time when relevant. Count only body prose toward body_target_words. Keep within min_words and max_words. Skip if the evidence cannot support the length without padding.",
                     },
                 },
                 self.model,
