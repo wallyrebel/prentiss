@@ -11,7 +11,7 @@ feeds:
   url: https://raw.githubusercontent.com/wallyrebel/MississippiNewsGroup/main/data/public-records/prentiss.xml
   # This curated feed identifies the primary publisher in each RSS item's source element.
   default_category: Prentiss County News
-  max_per_run: 1
+  max_per_run: 3
 - name: Northeast Regional Library Prentiss County holiday schedules
   url: https://www.nereg.lib.ms.us/
   source_name: Northeast Regional Library
